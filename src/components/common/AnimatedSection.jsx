@@ -13,6 +13,15 @@ export default function AnimatedSection({ children, animation = 'animate-fade-up
   const domRef = useRef();
 
   useEffect(() => {
+    // IntersectionObserver is unavailable in some embedded webviews, older
+    // browsers, and test environments (jsdom). Without this guard the effect
+    // throws and React unmounts the whole page; with it, content simply shows
+    // immediately instead of animating in.
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return undefined;
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {

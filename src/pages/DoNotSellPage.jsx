@@ -95,7 +95,8 @@ const STATE_STATUTES = {
   }
 };
 
-const STATUTE_FAQS = [
+// Shared with CookiePage, whose Regulations FAQ section asks the same questions.
+export const STATUTE_FAQS = [
   {
     q: "What does 'Selling' mean under CCPA/CPRA?",
     a: "Under the CCPA's broad definition, 'selling' refers to sharing, transferring, or disclosing personal information to another business or third party for monetary or other valuable consideration. MedTrack does not sell clinical inventory telemetry for money. However, sharing tracking IDs with diagnostic partners to coordinate equipment repairs may be considered 'sharing' or 'selling' under California law."

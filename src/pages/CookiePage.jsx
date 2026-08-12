@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { STATUTE_FAQS } from "./DoNotSellPage";
 
 /**
  * ==================================================================================
@@ -127,6 +128,9 @@ export default function CookiePage() {
 
   // Consent History Log
   const [consentHistory, setConsentHistory] = useState(MOCK_CONSENT_HISTORY);
+
+  // Regulations FAQ accordion (which question is expanded)
+  const [expandedFaqIdx, setExpandedFaqIdx] = useState(null);
 
   // Handler for Saving settings
   const handleSaveCookieSettings = () => {
