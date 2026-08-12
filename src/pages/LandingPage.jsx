@@ -316,7 +316,7 @@ export default function LandingPage({ onNavigate }) {
       </section>
 
       {/* Value Proposition Section (Screenshot Style) */}
-      <section className="py-20 bg-white dark:bg-slate-900 max-w-[1400px] mx-auto px-6 lg:px-12 border-t border-subtle">
+      <section id="hospitals" className="py-20 bg-white dark:bg-slate-900 max-w-[1400px] mx-auto px-6 lg:px-12 border-t border-subtle">
         <div className="mb-14">
           <h2 className="text-2xl md:text-3xl font-black text-primary mb-2">Why Choose MedTrack</h2>
           <p className="text-base text-secondary font-medium">Take the hassle out of securing your medical equipment for the best years of your facility</p>
@@ -375,7 +375,7 @@ export default function LandingPage({ onNavigate }) {
       </section>
 
       {/* Get Ahead with MedTrack (Glassdoor style) */}
-      <section className="py-12 bg-slate-50 dark:bg-slate-900/40 max-w-[1400px] mx-auto px-6 lg:px-12 text-center border-t border-subtle">
+      <section id="suppliers" className="py-12 bg-slate-50 dark:bg-slate-900/40 max-w-[1400px] mx-auto px-6 lg:px-12 text-center border-t border-subtle">
         <h2 className="text-2xl md:text-3xl font-black text-primary mb-3 tracking-tight">Get ahead with MedTrack</h2>
         <p className="text-secondary font-medium max-w-2xl mx-auto mb-10 text-sm">
           We're serving up trusted insights and seamless procurement, so you'll have the equipment you need to succeed.

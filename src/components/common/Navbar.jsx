@@ -6,11 +6,44 @@ import { getUnreadCounts } from "../../services/EventStreamService";
 import MedTrackLogo from "./MedTrackLogo";
 import ActivityCenter from "../../pages/hospital/ActivityCenter";
 
+// Navigation targets are exported so tests can verify every target resolves to a registered route.
+// Public marketing links with a `section` stay on the landing page and scroll to that section instead
+// of navigating to a (non-existent) page of their own - previously `features`/`hospitals`/`suppliers`
+// were not registered page keys, so every one of those links rendered the 404 page.
+export const PUBLIC_NAV_LINKS = [
+  { label: "Features", page: "landing", section: "features" },
+  { label: "Hospitals", page: "landing", section: "hospitals" },
+  { label: "Suppliers", page: "landing", section: "suppliers" },
+  { label: "Blog", page: "blog" },
+  { label: "For employers", page: "about" },
+  { label: "Careers", page: "careers" },
+];
+
+export const HOSPITAL_NAV_LINKS = [
+  { label: "Dashboard", page: "dashboard" },
+  { label: "Equipment", page: "equipment" },
+  { label: "Maintenance", page: "maintenance" },
+  { label: "PM Rules", page: "maintenance-rules" },
+  { label: "New Procurement", page: "procurement-wizard" },
+  { label: "Approval Inbox", page: "approval-inbox" },
+];
+
+export const TECHNICIAN_NAV_LINKS = [
+  { label: "My Tasks", page: "tasks" },
+  { label: "Update Task", page: "update-task" },
+];
+
+export const SUPPLIER_NAV_LINKS = [
+  { label: "Orders", page: "orders" },
+  { label: "Order Status", page: "orderstatus" },
+];
+
 export default function Navbar({ onNavigate, currentPage }) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [pendingSection, setPendingSection] = useState(null);
 
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -74,41 +107,52 @@ export default function Navbar({ onNavigate, currentPage }) {
 
   const isLanding = currentPage === "landing";
 
-  // Landing page links
- const publicLinks = [
-  { label: "Features", page: "features" },
-  { label: "Hospitals", page: "hospitals" },
-  { label: "Suppliers", page: "suppliers" },
-  { label: "Blog", page: "blog" },
-  { label: "For employers", page: "about" },
-  { label: "Careers", page: "careers" },
-];
+  const navLinks = !user
+    ? PUBLIC_NAV_LINKS
+    : user.role === "hospital"
+    ? HOSPITAL_NAV_LINKS
+    : user.role === "technician"
+    ? TECHNICIAN_NAV_LINKS
+    : SUPPLIER_NAV_LINKS;
 
-  // Dashboard links after login
-  const privateLinks = user
-    ? user.role === "hospital"
-      ? [
-          { label: "Dashboard", page: "dashboard" },
-          { label: "Equipment", page: "equipment" },
-          { label: "Maintenance", page: "maintenance" },
-          { label: "PM Rules", page: "maintenance-rules" },
-        ]
-      : user.role === "technician"
-      ? [
-          { label: "My Tasks", page: "tasks" },
-          { label: "Update Task", page: "updatetask" },
-        ]
-      : [
-          { label: "Orders", page: "orders" },
-          { label: "Order Status", page: "orderstatus" },
-        ]
-    : [];
+  // A section link scrolls to that section on the landing page. If we are not on the landing page
+  // yet, navigate there first and poll briefly for the (lazy-loaded) section to appear before
+  // scrolling; a fixed delay would race the LandingPage chunk loading.
+  useEffect(() => {
+    if (currentPage !== "landing" || !pendingSection) {
+      return undefined;
+    }
+    let tries = 0;
+    let timer;
+    const attempt = () => {
+      const section = document.getElementById(pendingSection);
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+        setPendingSection(null);
+        return;
+      }
+      if (tries++ < 20) {
+        timer = window.setTimeout(attempt, 100);
+      } else {
+        setPendingSection(null);
+      }
+    };
+    timer = window.setTimeout(attempt, 0);
+    return () => window.clearTimeout(timer);
+  }, [currentPage, pendingSection]);
 
-  // Add procurement links for hospital
-  const navLinks = user ? (user.role === "hospital" ? [...privateLinks, ...[
-    { label: "New Procurement", page: "procurement-wizard" },
-    { label: "Approval Inbox", page: "approval-inbox" },
-  ]] : privateLinks) : publicLinks;
+  const handleNavClick = (link) => {
+    if (!link.section) {
+      onNavigate(link.page);
+      return;
+    }
+    if (currentPage === "landing") {
+      document.getElementById(link.section)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      setPendingSection(link.section);
+      onNavigate("landing");
+    }
+  };
 
   return (
     <nav className={`fixed w-full z-50 transition-all duration-300 ${isLanding ? (scrolled ? 'top-0 bg-surface/95 backdrop-blur-md shadow-sm border-b border-subtle' : 'top-0 bg-transparent border-transparent') : 'sticky top-0 bg-surface/80 backdrop-blur-lg border-b border-subtle'}`}>
@@ -128,8 +172,8 @@ export default function Navbar({ onNavigate, currentPage }) {
 
             {navLinks.map((link) => (
               <button
-                key={link.page}
-                onClick={() => onNavigate(link.page)}
+                key={link.label}
+                onClick={() => handleNavClick(link)}
                 className={`text-sm font-bold transition-all ${
                   currentPage === link.page
                     ? "text-blue-600"
@@ -287,9 +331,9 @@ export default function Navbar({ onNavigate, currentPage }) {
         <div className="md:hidden border-t border-subtle bg-surface px-6 py-4 space-y-3">
           {navLinks.map((link) => (
             <button
-              key={link.page}
+              key={link.label}
               onClick={() => {
-                onNavigate(link.page);
+                handleNavClick(link);
                 setMenuOpen(false);
               }}
               className={`block w-full text-left px-3 py-2 rounded-lg text-sm font-bold ${
