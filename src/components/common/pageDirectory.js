@@ -153,6 +153,7 @@ export const PAGE_LABELS = {
   "clinical-trial": { label: "Clinical Trials & Genomic Research", keywords: "trial protocol enrollment cohort biomarker research" },
   "genomic-clinical-trials": { label: "Genomic Clinical Trials", keywords: "genomics sequencing variant precision medicine trial" },
   "regulatory-audit": { label: "Regulatory Audit & Provenance", keywords: "audit provenance c2pa hipaa evidence attestation ledger" },
+  "radiation-safety": { label: "Radiation Safety & Dosimetry", keywords: "radiation dosimetry dose badge sealed source isotope decay half life drl irmer irr17 lead apron lens" },
 
   // --- enterprise security consoles that had no entry ------------------------------------------
   "security-compliance": { label: "Security & Compliance Hub", keywords: "security compliance posture controls overview" },
@@ -236,6 +237,7 @@ export const CONSOLE_GROUPS = [
       "regulatory-audit",
       "biomedical-ai-governance",
       "security-compliance",
+      "radiation-safety",
     ],
   },
 ];

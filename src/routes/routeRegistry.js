@@ -117,6 +117,7 @@ const PathologyDigitalHub = lazy(() => import("../pages/pathology/PathologyDigit
 const PatientEhrAnalyticsPredictivePage = lazy(() => import("../pages/patient/PatientEhrAnalyticsPredictivePage"));
 const GenomicsPrecisionHub = lazy(() => import("../pages/genomics/GenomicsPrecisionHub"));
 const OphthalmologyVisionHub = lazy(() => import("../pages/ophthalmology/OphthalmologyVisionHub"));
+const RadiationSafetyDosimetryHub = lazy(() => import("../pages/radiation/RadiationSafetyDosimetryHub"));
 const RegulatoryAuditProvenanceHub = lazy(() => import("../pages/audit/RegulatoryAuditProvenanceHub"));
 const ComplianceProvenanceLedgerHub = lazy(() => import("../pages/audit/ComplianceProvenanceLedgerHub"));
 const BehavioralHealthHub = lazy(() => import("../pages/behavioral/BehavioralHealthHub"));
@@ -322,6 +323,7 @@ export const ROUTES = [
   // Finished page components that had no entry here at all, so no URL reached them. Each is
   // authenticated rather than role-scoped, matching every other clinical console.
   { page: "ophthalmology-vision", slugs: ["ophthalmology-vision", "ophthalmology", "eye-unit"], component: OphthalmologyVisionHub, access: AUTHENTICATED },
+  { page: "radiation-safety", slugs: ["radiation-safety", "dosimetry", "radiation-protection"], component: RadiationSafetyDosimetryHub, access: AUTHENTICATED },
   { page: "regulatory-audit-provenance", slugs: ["regulatory-audit-provenance", "audit-provenance", "provenance-ledger"], component: RegulatoryAuditProvenanceHub, access: AUTHENTICATED },
   { page: "compliance-provenance-ledger", slugs: ["compliance-provenance-ledger", "c2pa-hipaa", "provenance-audit"], component: ComplianceProvenanceLedgerHub, access: AUTHENTICATED },
   { page: "behavioral-health", slugs: ["behavioral-health", "behavioral", "mental-health"], component: BehavioralHealthHub, access: AUTHENTICATED },
