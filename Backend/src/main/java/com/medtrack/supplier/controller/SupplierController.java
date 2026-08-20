@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/api/supplier")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 @Tag(name = "Supplier Orders", description = "Endpoints for suppliers to query and retrieve localized equipment purchase orders.")
 public class SupplierController {
 

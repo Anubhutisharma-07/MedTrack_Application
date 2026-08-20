@@ -30,7 +30,7 @@ import org.springframework.data.domain.Sort;
 @RestController
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class OrderController {
 
     private final OrderService orderService;

@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/shipments")
 @RequiredArgsConstructor
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 @PreAuthorize("hasRole('SUPPLIER')")
 @Tag(name = "Shipment Tracking", description = "Endpoints for managing and querying shipment tracking records for supplier orders.")
 public class ShipmentTrackingController {

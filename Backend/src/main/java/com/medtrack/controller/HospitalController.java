@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/hospital")
-@CrossOrigin(origins = "*", maxAge = 3600)
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"}, maxAge = 3600)
 @RequiredArgsConstructor
 public class HospitalController {
 
@@ -39,11 +39,7 @@ public class HospitalController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String userEmail = authentication.getName();
 
-        try {
-            Hospital createdHospital = hospitalService.createHospitalProfile(hospital, userEmail);
-            return new ResponseEntity<>(createdHospital, HttpStatus.CREATED);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        Hospital createdHospital = hospitalService.createHospitalProfile(hospital, userEmail);
+        return new ResponseEntity<>(createdHospital, HttpStatus.CREATED);
     }
 }
