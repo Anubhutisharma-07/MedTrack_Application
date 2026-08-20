@@ -121,6 +121,7 @@ export const PAGE_LABELS = {
   "neonatal-nicu": { label: "Neonatal NICU", keywords: "nicu neonate newborn incubator preterm apnoea" },
   "emergency-triage": { label: "Emergency Triage", keywords: "ed emergency triage esi ambulance bed board boarding" },
   "hospital-command": { label: "Hospital Command & Orchestration", keywords: "command centre capacity census orchestration operations" },
+  "respiratory-ventilator": { label: "Respiratory & Ventilator Fleet", keywords: "ventilator respiratory ards tidal volume peep weaning extubation oxygen cylinder hfnc niv" },
 
   // --- diagnostics and imaging -----------------------------------------------------------------
   "radiology-imaging": { label: "Radiology Imaging & PACS", keywords: "radiology pacs dicom ct mri xray scanner imaging" },
@@ -187,6 +188,7 @@ export const CONSOLE_GROUPS = [
       "pediatric-neonatal-icu",
       "emergency-triage",
       "hospital-command",
+      "respiratory-ventilator",
     ],
   },
   {
