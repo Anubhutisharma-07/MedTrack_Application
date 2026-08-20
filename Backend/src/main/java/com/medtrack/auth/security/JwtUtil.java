@@ -121,7 +121,7 @@ public class JwtUtil {
             if (val instanceof Number) {
                 return ((Number) val).longValue();
             }
-            return 1L;
+            return null;
         });
     }
 

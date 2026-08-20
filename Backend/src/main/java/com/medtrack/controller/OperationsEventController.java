@@ -5,7 +5,12 @@ import com.medtrack.dto.OperationsEventResponse;
 import com.medtrack.dto.UnreadCountResponse;
 import com.medtrack.model.EventReadReceipt;
 import com.medtrack.model.OperationsEvent;
+import com.medtrack.auth.model.User;
+import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.exception.ResourceNotFoundException;
+import com.medtrack.model.Hospital;
 import com.medtrack.repository.EventReadReceiptRepository;
+import com.medtrack.repository.HospitalRepository;
 import com.medtrack.repository.OperationsEventRepository;
 import com.medtrack.service.EventPublisherService;
 import jakarta.validation.Valid;
@@ -16,6 +21,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -35,11 +42,14 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/events")
 @RequiredArgsConstructor
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class OperationsEventController {
 
     private final OperationsEventRepository eventRepository;
     private final EventReadReceiptRepository readReceiptRepository;
     private final EventPublisherService eventPublisherService;
+    private final UserRepository userRepository;
+    private final HospitalRepository hospitalRepository;
 
     /**
      * Get paginated event history for the user's hospital.
@@ -117,7 +127,7 @@ public class OperationsEventController {
      * Mark events as read.
      */
     @PostMapping("/read")
-    public ResponseEntity<Void> markAsRead(@Valid @RequestBody EventReadRequest request, Authentication authentication) {
+    public ResponseEntity<Map<String, String>> markAsRead(@Valid @RequestBody EventReadRequest request, Authentication authentication) {
         Long userId = getUserId(authentication);
         Long hospitalId = getHospitalId(authentication);
 
@@ -125,7 +135,7 @@ public class OperationsEventController {
         List<OperationsEvent> events = eventRepository.findAllById(request.getEventIds());
         for (OperationsEvent event : events) {
             if (!event.getHospitalId().equals(hospitalId)) {
-                return ResponseEntity.badRequest().build();
+                return ResponseEntity.badRequest().body(Map.of("message", "Event does not belong to your hospital"));
             }
         }
 
@@ -137,15 +147,13 @@ public class OperationsEventController {
                         .build())
                 .collect(Collectors.toList());
         readReceiptRepository.saveAll(receipts);
-
-        return ResponseEntity.ok().build();
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Events marked as read");
+        return ResponseEntity.ok(response);
     }
 
-    /**
-     * Mark all events as read (up to a limit).
-     */
     @PostMapping("/read-all")
-    public ResponseEntity<Void> markAllAsRead(@RequestParam(defaultValue = "100") int limit, Authentication authentication) {
+    public ResponseEntity<Map<String, String>> markAllAsRead(@RequestParam(defaultValue = "100") int limit, Authentication authentication) {
         Long userId = getUserId(authentication);
         Long hospitalId = getHospitalId(authentication);
 
@@ -160,8 +168,9 @@ public class OperationsEventController {
                         .build())
                 .collect(Collectors.toList());
         readReceiptRepository.saveAll(receipts);
-
-        return ResponseEntity.ok().build();
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "All events marked as read");
+        return ResponseEntity.ok(response);
     }
 
     private OperationsEventResponse toResponse(OperationsEvent event) {
@@ -182,13 +191,18 @@ public class OperationsEventController {
     }
 
     private Long getHospitalId(Authentication authentication) {
-        // In a real implementation, this would come from the user's hospital context
-        // For now, extracting from principal or using a service
-        return 1L; // Placeholder - should use HospitalAccessGuard or similar
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+        Hospital hospital = hospitalRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found for user"));
+        return hospital.getId();
     }
 
     private Long getUserId(Authentication authentication) {
-        // Extract user ID from authentication
-        return 1L; // Placeholder
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+        return user.getId();
     }
 }

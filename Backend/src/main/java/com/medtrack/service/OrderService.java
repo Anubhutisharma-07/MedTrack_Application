@@ -28,10 +28,13 @@ import java.util.List;
 
 import com.medtrack.util.SupplierInvoicePdf;
 import com.medtrack.auth.service.EmailService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+n    private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
 
     private final EquipmentOrderRepository orderRepository;
     private final EquipmentRepository equipmentRepository;
@@ -61,7 +64,7 @@ public class OrderService {
     private String getCurrentUserOrganization() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new SecurityException("User not authenticated");
         }
         String email = authentication.getName();
         return userRepository.findByEmail(email)
@@ -71,7 +74,7 @@ public class OrderService {
 
     private User getAuthenticatedUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new SecurityException("User not authenticated");
         }
         return userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -87,7 +90,7 @@ public class OrderService {
     private String getCurrentUsername() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new SecurityException("User not authenticated");
         }
         return authentication.getName();
     }
@@ -166,6 +169,7 @@ public class OrderService {
         return orderRepository.save(order);
     }
 
+    @Transactional
     public EquipmentOrder updateOrderStatus(Long id, String status, String supplierNotes,
                                              Authentication authentication) {
         EquipmentOrder order = orderRepository.findById(id)
@@ -209,6 +213,7 @@ public class OrderService {
         return purchaseOrderPdf.generate(order);
     }
 
+    @Transactional
     public void deleteOrder(Long id) {
         EquipmentOrder order = getOrderById(id);
         orderRepository.delete(order);
@@ -229,7 +234,7 @@ public class OrderService {
         EquipmentOrder savedOrder = orderRepository.save(order);
         
         // Log the archival
-        System.out.println("Order archived | User: " + deletedBy + " | Order ID: " + id + " | Order Code: " + order.getOrderCode());
+         logger.info("Order archived | User: " + deletedBy + " | Order ID: " + id + " | Order Code: " + order.getOrderCode());
         
         return savedOrder;
     }
@@ -255,7 +260,7 @@ public class OrderService {
         EquipmentOrder savedOrder = orderRepository.save(order);
 
         // Log the restoration
-        System.out.println("Order restored | User: " + username + " | Order ID: " + id + " | Order Code: " + order.getOrderCode());
+         logger.info("Order restored | User: " + username + " | Order ID: " + id + " | Order Code: " + order.getOrderCode());
 
         return savedOrder;
     }
@@ -286,7 +291,7 @@ public class OrderService {
 
         orderRepository.delete(order);
 
-        System.out.println("Order permanently deleted | User: " + getCurrentUsername() + " | Order ID: " + id + " | Order Code: " + order.getOrderCode());
+         logger.info("Order permanently deleted | User: " + getCurrentUsername() + " | Order ID: " + id + " | Order Code: " + order.getOrderCode());
     }
 
     public SupplierMetricsDto getSupplierMetrics() {

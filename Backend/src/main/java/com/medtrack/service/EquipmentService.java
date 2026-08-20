@@ -22,26 +22,19 @@ import com.medtrack.repository.HospitalRepository;
 import com.medtrack.specifications.EquipmentSpecifications;
 import com.medtrack.util.CsvSupport;
 import lombok.RequiredArgsConstructor;
-
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 import com.medtrack.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.Map;
 import com.medtrack.model.EquipmentCategory;
 import com.medtrack.dto.EquipmentUtilizationResponse;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
@@ -49,10 +42,15 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -88,8 +86,8 @@ public class EquipmentService {
     };
 
     private Hospital getHospitalForUser(String username) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + username));
         return hospitalRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found for user"));
     }
@@ -713,6 +711,7 @@ public class EquipmentService {
      * If no equipmentCode is provided by the caller, auto-generates one
      * using a unique UUID.
      */
+    @Transactional
     public Equipment addEquipment(Equipment equipment , String username) {
         Hospital hospital = getHospitalForUser(username);
         equipment.setHospital(hospital);
@@ -761,6 +760,7 @@ public class EquipmentService {
     /**
      * Deletes an equipment record by ID.
      */
+    @Transactional
     public void deleteEquipment(Long id , String username) {
         Hospital hospital = getHospitalForUser(username);
         Equipment equipment = equipmentRepository.findByIdAndHospitalId(id,hospital.getId())
@@ -778,6 +778,7 @@ public class EquipmentService {
     /**
      * Updates an existing equipment record's fields.
      */
+    @Transactional
     public Equipment updateEquipment(Long id, Equipment equipmentDetails , String username) {
         Hospital hospital = getHospitalForUser(username);
         Equipment equipment = equipmentRepository.findByIdAndHospitalId(id,hospital.getId())
@@ -872,7 +873,7 @@ public class EquipmentService {
             byte[] pngData = pngOutputStream.toByteArray();
             return java.util.Base64.getEncoder().encodeToString(pngData);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to generate QR Code for equipment ID: " + id, e);
+            throw new IllegalStateException("Failed to generate QR Code for equipment ID: " + id, e);
         }
     }
 
@@ -1372,7 +1373,7 @@ public class EquipmentService {
             // IllegalArgumentException for "CSV file has no content" and for a missing header
             // column; catching Exception here rewrapped those into a RuntimeException, so a
             // user-fixable input problem was reported as a server error with the reason lost.
-            throw new RuntimeException("Error reading CSV file", e);
+            throw new IllegalStateException("Error reading CSV file", e);
         }
 
         return new ParsedImport(equipmentToSave, failures, validRows, successCount, failureCount);

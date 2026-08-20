@@ -23,6 +23,7 @@ import java.security.Principal;
 import java.util.List;
 
 @RestController
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 @RequestMapping("/api/equipment")
 @RequiredArgsConstructor
 public class EquipmentLifecycleController {

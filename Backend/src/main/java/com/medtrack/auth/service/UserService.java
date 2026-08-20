@@ -401,7 +401,7 @@ public class UserService {
 
         // Reject if not verified
         if (!token.isVerified()) {
-            throw new RuntimeException("OTP has not been verified");
+            throw new com.medtrack.exception.InvalidStatusTransitionException("OTP has not been verified");
         }
 
         // Get user and update password
@@ -453,7 +453,7 @@ public class UserService {
         if (!token.getOtp().equals(otp)) {
             token.setAttemptCount(token.getAttemptCount() + 1);
             passwordResetTokenRepository.save(token);
-            throw new RuntimeException("Incorrect OTP");
+            throw new com.medtrack.exception.InvalidStatusTransitionException("Incorrect OTP");
         }
 
         return token;

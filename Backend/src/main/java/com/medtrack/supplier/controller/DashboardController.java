@@ -30,12 +30,12 @@ public class DashboardController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.isAuthenticated()) {
             String username = authentication.getName();
-            Optional<User> userOpt = userRepository.findByUsername(username);
-            if (userOpt.isPresent()) {
-                return userOpt.get().getId();
+            // email resolved below
+            if (authentication != null && authentication.isAuthenticated()) {
+                User u = userRepository.findByEmail(authentication.getName()).orElseThrow(() -> new com.medtrack.exception.ResourceNotFoundException("User not found")); return u.getId();
             }
         }
-        return 1L; // default fallback ID
+        throw new com.medtrack.exception.ResourceNotFoundException("User not authenticated");
     }
 
     @GetMapping

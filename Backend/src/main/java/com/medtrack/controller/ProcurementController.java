@@ -42,6 +42,7 @@ import java.util.List;
  * quotes, record receiving, and reconcile invoices. Suppliers submit and track quotes.</p>
  */
 @RestController
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 @RequestMapping("/api/procurement")
 @RequiredArgsConstructor
 public class ProcurementController {
