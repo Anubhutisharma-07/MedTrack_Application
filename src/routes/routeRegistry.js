@@ -134,6 +134,7 @@ const DermatologyHub = lazy(() => import("../pages/dermatology/DermatologyHub"))
 const AudiologyEntHub = lazy(() => import("../pages/ent/AudiologyEntHub"));
 const UrologyHub = lazy(() => import("../pages/urology/UrologyHub"));
 
+const InfectionControlStewardshipHub = lazy(() => import("../pages/infectioncontrol/InfectionControlStewardshipHub"));
 const AuthoritySecurityPage = lazy(() => import("../pages/auth/AuthoritySecurityPage"));
 const MfaSecurityPage = lazy(() => import("../pages/auth/MfaSecurityPage"));
 const EnterpriseSsoPage = lazy(() => import("../pages/auth/EnterpriseSsoPage"));
@@ -339,6 +340,7 @@ export const ROUTES = [
   { page: "audiology-ent", slugs: ["audiology-ent", "ent", "audiology", "hearing-clinic"], component: AudiologyEntHub, access: AUTHENTICATED },
   { page: "endocrinology-metabolic", slugs: ["endocrinology-metabolic", "endo-metabolic", "diabetes-thyroid"], component: EndocrinologyMetabolicHub, access: AUTHENTICATED },
   { page: "urology", slugs: ["urology", "urology-clinic", "stone-clinic"], component: UrologyHub, access: AUTHENTICATED },
+  { page: "infection-control", slugs: ["infection-control", "antimicrobial-stewardship", "hai-surveillance"], component: InfectionControlStewardshipHub, access: AUTHENTICATED },
 
   // --- technician -------------------------------------------------------------
   { page: "tasks", slugs: ["tasks"], component: TaskList, access: AUTHENTICATED, permission: "READ_MAINTENANCE" },
