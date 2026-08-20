@@ -54,6 +54,7 @@ public class EquipmentController {
      * @return a paginated response of equipment records
      */
     @GetMapping
+    @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<com.medtrack.dto.PagedResponse<Equipment>> getAllEquipment(
             @RequestParam(required = false) Long locationId,
             @RequestParam(required = false) @Min(value = 0, message = "Page number cannot be less than 0") Integer page,
@@ -84,6 +85,7 @@ public class EquipmentController {
     }
 
     @GetMapping("/department")
+    @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<List<Equipment>> getEquipmentByDepartment(
             @RequestParam String department,
             Principal principal) {
@@ -109,6 +111,7 @@ public class EquipmentController {
     }
 
     @GetMapping("/statistics")
+    @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<EquipmentStatisticsResponse> getStatistics(
             Principal principal) {
 
@@ -159,6 +162,7 @@ public class EquipmentController {
      * @return the requested equipment record
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<Equipment> getEquipmentById(@PathVariable Long id, Principal principal) {
         validateId(id);
         return ResponseEntity.ok(equipmentService.getEquipmentById(id, principal.getName()));
@@ -359,6 +363,7 @@ public class EquipmentController {
      * @return a JSON object containing the base64 encoded QR Code string
      */
     @GetMapping("/{id}/qr-code")
+    @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<java.util.Map<String, String>> getQrCode(
             @PathVariable Long id,
             Principal principal) {
@@ -391,6 +396,7 @@ public class EquipmentController {
      * Retrieves equipment whose warranty has already expired.
      */
     @GetMapping("/warranty/expired")
+    @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<List<Equipment>> getExpiredWarrantyEquipment(Principal principal) {
         return ResponseEntity.ok(
                 equipmentService.getExpiredWarrantyEquipment(principal.getName())
