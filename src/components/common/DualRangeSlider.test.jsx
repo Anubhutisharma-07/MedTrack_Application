@@ -72,6 +72,38 @@ describe('DualRangeSlider Component', () => {
     expect(handleChange).toHaveBeenCalledWith([40, 50]);
   });
 
+  it('clamps out-of-range default values into the min/max bounds', () => {
+    render(<DualRangeSlider min={0} max={50} defaultValue={[0, 100]} />);
+
+    const minInput = screen.getByLabelText('Minimum value');
+    const maxInput = screen.getByLabelText('Maximum value');
+
+    // State is clamped on mount: the max thumb must not sit past the track end.
+    expect(maxInput.value).toBe('50');
+
+    // The visible "Selected" label reflects the clamped range, not the raw default.
+    expect(screen.getByText(/Selected:/)).toHaveTextContent('50');
+    expect(screen.getByText(/Selected:/)).not.toHaveTextContent('100');
+  });
+
+  it('clamps the controlled value when the bounds shrink after mount', () => {
+    const handleChange = vi.fn();
+    const { rerender } = render(
+      <DualRangeSlider min={0} max={250} step={5} value={[25, 150]} onChange={handleChange} />
+    );
+
+    expect(screen.getByLabelText('Maximum value').value).toBe('150');
+
+    // Shrink the max bound below the current range.
+    rerender(
+      <DualRangeSlider min={0} max={60} step={5} value={[25, 150]} onChange={handleChange} />
+    );
+
+    const maxInput = screen.getByLabelText('Maximum value');
+    expect(maxInput.value).toBe('60');
+    expect(handleChange).toHaveBeenCalledWith([25, 60]);
+  });
+
   it('handles disabled state correctly', () => {
     render(<DualRangeSlider min={0} max={100} value={[10, 50]} disabled />);
 

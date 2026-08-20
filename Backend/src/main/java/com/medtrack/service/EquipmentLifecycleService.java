@@ -8,14 +8,22 @@ import com.medtrack.dto.EquipmentLifecycleActionResponse;
 import com.medtrack.dto.EquipmentLocationResponse;
 import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.Equipment;
+import com.medtrack.model.EquipmentDisposalStatus;
 import com.medtrack.model.EquipmentLifecycleAction;
 import com.medtrack.model.EquipmentLifecycleActionType;
 import com.medtrack.model.EquipmentLifecycleStatus;
 import com.medtrack.model.EquipmentStatus;
 import com.medtrack.model.Hospital;
+import com.medtrack.model.MaintenanceStatus;
+import com.medtrack.model.MaintenanceTask;
+import com.medtrack.model.MaintenanceWorkOrder;
+import com.medtrack.model.MaintenanceWorkOrderStatus;
+import com.medtrack.repository.EquipmentDisposalRepository;
 import com.medtrack.repository.EquipmentLifecycleActionRepository;
 import com.medtrack.repository.EquipmentRepository;
 import com.medtrack.repository.HospitalRepository;
+import com.medtrack.repository.MaintenanceTaskRepository;
+import com.medtrack.repository.MaintenanceWorkOrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,15 +35,32 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class EquipmentLifecycleService {
 
+    private static final List<MaintenanceWorkOrderStatus> LIVE_WORK_ORDER_STATUSES = List.of(
+            MaintenanceWorkOrderStatus.OPEN,
+            MaintenanceWorkOrderStatus.ASSIGNED,
+            MaintenanceWorkOrderStatus.IN_PROGRESS,
+            MaintenanceWorkOrderStatus.ON_HOLD);
+
+    private static final List<MaintenanceStatus> LIVE_TASK_STATUSES = List.of(
+            MaintenanceStatus.SCHEDULED,
+            MaintenanceStatus.IN_PROGRESS,
+            MaintenanceStatus.NEEDS_PART,
+            MaintenanceStatus.ON_HOLD);
+
     private final EquipmentLifecycleActionRepository lifecycleRepository;
     private final EquipmentRepository equipmentRepository;
     private final HospitalRepository hospitalRepository;
     private final UserRepository userRepository;
+    private final EquipmentDisposalRepository disposalRepository;
+    private final PreventiveMaintenanceService preventiveMaintenanceService;
+    private final MaintenanceWorkOrderRepository workOrderRepository;
+    private final MaintenanceTaskRepository taskRepository;
 
     @Transactional
     public EquipmentLifecycleActionResponse createAction(Long equipmentId,
@@ -185,6 +210,8 @@ public class EquipmentLifecycleService {
         if (isInactive(equipment) && action.getActionType() != EquipmentLifecycleActionType.DEPRECIATION_SNAPSHOT) {
             throw new IllegalArgumentException("Retired or disposed equipment cannot receive lifecycle changes");
         }
+        validateNoPendingDisposal(equipment);
+        validateNoActiveMaintenance(equipment, action.getActionType());
 
         applyCompletedAction(equipment, action);
         action.setStatus(EquipmentLifecycleStatus.COMPLETED);
@@ -206,14 +233,33 @@ public class EquipmentLifecycleService {
             equipment.setLocationEffectiveDate(action.getEffectiveDate());
         } else if (action.getActionType() == EquipmentLifecycleActionType.RETIREMENT) {
             equipment.setStatus(EquipmentStatus.RETIRED);
+            equipment.setLocation(null);
+            equipment.setRoomLocation(null);
+            equipment.setWardLocation(null);
+            deactivateMaintenanceRules(equipment, action.getApprovedBy());
         } else if (action.getActionType() == EquipmentLifecycleActionType.DISPOSAL) {
             equipment.setStatus(EquipmentStatus.DISPOSED);
+            equipment.setLocation(null);
+            equipment.setRoomLocation(null);
+            equipment.setWardLocation(null);
+            deactivateMaintenanceRules(equipment, action.getApprovedBy());
         } else if (action.getActionType() == EquipmentLifecycleActionType.REPLACEMENT) {
             if (action.getReplacementEquipment() == null) {
                 throw new IllegalArgumentException("Replacement equipment is required");
             }
             equipment.setReplacementEquipment(action.getReplacementEquipment());
             equipment.setStatus(EquipmentStatus.RETIRED);
+            equipment.setLocation(null);
+            equipment.setRoomLocation(null);
+            equipment.setWardLocation(null);
+            deactivateMaintenanceRules(equipment, action.getApprovedBy());
+        }
+    }
+
+    private void deactivateMaintenanceRules(Equipment equipment, String username) {
+        if (preventiveMaintenanceService != null && equipment != null && equipment.getId() != null && equipment.getHospital() != null) {
+            preventiveMaintenanceService.deactivateRulesForDecommissionedEquipment(
+                    equipment.getId(), equipment.getHospital().getId(), username);
         }
     }
 
@@ -221,6 +267,8 @@ public class EquipmentLifecycleService {
         if (isInactive(equipment) && request.getActionType() != EquipmentLifecycleActionType.DEPRECIATION_SNAPSHOT) {
             throw new IllegalArgumentException("Retired or disposed equipment cannot receive lifecycle changes");
         }
+        validateNoPendingDisposal(equipment);
+        validateNoActiveMaintenance(equipment, request.getActionType());
         if ((request.getActionType() == EquipmentLifecycleActionType.TRANSFER
                 || request.getActionType() == EquipmentLifecycleActionType.ASSIGNMENT)
                 && trimToNull(request.getNewDepartment()) == null) {
@@ -236,6 +284,66 @@ public class EquipmentLifecycleService {
         }
         if (request.getDepreciationAmount() != null && request.getDepreciationAmount().signum() < 0) {
             throw new IllegalArgumentException("Depreciation amount cannot be negative");
+        }
+    }
+
+    private void validateNoActiveMaintenance(Equipment equipment, EquipmentLifecycleActionType actionType) {
+        if (equipment == null || equipment.getId() == null || equipment.getHospital() == null) {
+            return;
+        }
+        if (actionType != EquipmentLifecycleActionType.RETIREMENT
+                && actionType != EquipmentLifecycleActionType.DISPOSAL
+                && actionType != EquipmentLifecycleActionType.REPLACEMENT) {
+            return;
+        }
+        Long hospitalId = equipment.getHospital().getId();
+        Long equipmentId = equipment.getId();
+
+        if (workOrderRepository != null) {
+            List<MaintenanceWorkOrder> liveWorkOrders = workOrderRepository
+                    .findAllByHospitalIdAndEquipmentIdOrderByCreatedAtDesc(hospitalId, equipmentId)
+                    .stream()
+                    .filter(workOrder -> LIVE_WORK_ORDER_STATUSES.contains(workOrder.getStatus()))
+                    .toList();
+            if (!liveWorkOrders.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Equipment " + equipment.getEquipmentCode()
+                                + " still has active maintenance work orders and cannot be decommissioned: "
+                                + liveWorkOrders.stream()
+                                        .map(MaintenanceWorkOrder::getWorkOrderCode)
+                                        .collect(Collectors.joining(", ")));
+            }
+        }
+
+        if (taskRepository != null) {
+            List<MaintenanceTask> liveTasks = taskRepository
+                    .findByHospitalIdAndEquipmentRecordId(hospitalId, equipmentId)
+                    .stream()
+                    .filter(task -> LIVE_TASK_STATUSES.contains(task.getStatus()))
+                    .toList();
+            if (!liveTasks.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Equipment " + equipment.getEquipmentCode()
+                                + " still has scheduled maintenance tasks and cannot be decommissioned: "
+                                + liveTasks.stream()
+                                        .map(MaintenanceTask::getTaskCode)
+                                        .collect(Collectors.joining(", ")));
+            }
+        }
+    }
+
+    private void validateNoPendingDisposal(Equipment equipment) {
+        if (equipment != null && equipment.getId() != null && equipment.getHospital() != null && disposalRepository != null) {
+            boolean pendingDisposal = disposalRepository
+                    .findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(
+                            equipment.getId(), equipment.getHospital().getId())
+                    .stream()
+                    .anyMatch(disposal -> disposal.getStatus() == EquipmentDisposalStatus.PENDING_APPROVAL
+                            || disposal.getStatus() == EquipmentDisposalStatus.APPROVED);
+            if (pendingDisposal) {
+                throw new IllegalArgumentException("Equipment " + equipment.getEquipmentCode()
+                        + " has an active disposal request awaiting approval or completion and cannot receive lifecycle changes");
+            }
         }
     }
 
@@ -262,7 +370,12 @@ public class EquipmentLifecycleService {
     }
 
     private Hospital getHospitalForUser(String username) {
-        User user = userRepository.findByUsername(username)
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("Username or email is required");
+        }
+        String identifier = username.trim();
+        User user = userRepository.findByUsername(identifier)
+                .or(() -> userRepository.findByEmail(identifier.toLowerCase(java.util.Locale.ROOT)))
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
         return hospitalRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found for user"));

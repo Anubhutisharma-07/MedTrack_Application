@@ -80,7 +80,7 @@ class MaintenanceRequestValidationTest {
     void scheduleAmendmentRequiresReasonAndRejectsPastDeadline() {
         MaintenanceScheduleAmendmentRequest request =
                 MaintenanceScheduleAmendmentRequest.builder()
-                        .deadline(LocalDate.now().minusDays(1))
+                        .newDeadline(LocalDate.now().minusDays(1))
                         .reason(" ")
                         .build();
 
@@ -100,24 +100,12 @@ class MaintenanceRequestValidationTest {
     void scheduleAmendmentEnforcesEveryPersistenceBound() {
         MaintenanceScheduleAmendmentRequest request =
                 MaintenanceScheduleAmendmentRequest.builder()
-                        .maintenanceType("M".repeat(256))
-                        .description("D".repeat(256))
-                        .priority("P".repeat(256))
-                        .recurrencePeriodDays(-1)
-                        .reason("R".repeat(1_001))
+                        .reason("R".repeat(16_001))
                         .build();
 
         var violations = validator.validate(request);
 
-        assertEquals(5, violations.size());
-        assertTrue(violations.stream().anyMatch(violation ->
-                violation.getPropertyPath().toString().equals("maintenanceType")));
-        assertTrue(violations.stream().anyMatch(violation ->
-                violation.getPropertyPath().toString().equals("description")));
-        assertTrue(violations.stream().anyMatch(violation ->
-                violation.getPropertyPath().toString().equals("priority")));
-        assertTrue(violations.stream().anyMatch(violation ->
-                violation.getPropertyPath().toString().equals("recurrencePeriodDays")));
+        assertEquals(1, violations.size());
         assertTrue(violations.stream().anyMatch(violation ->
                 violation.getPropertyPath().toString().equals("reason")));
     }

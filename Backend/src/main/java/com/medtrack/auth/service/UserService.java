@@ -28,6 +28,11 @@ import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
 
+import com.medtrack.auth.scim.dto.ScimUserDto;
+import com.medtrack.auth.scim.service.ScimUserProvisioningService;
+import com.medtrack.auth.jwt.service.JwtSecurityTokenService;
+import java.util.Map;
+
 import com.medtrack.auth.dto.ForgotPasswordRequest;
 import com.medtrack.auth.dto.VerifyOtpRequest;
 import com.medtrack.auth.dto.ResetPasswordRequest;
@@ -35,6 +40,7 @@ import com.medtrack.auth.model.PasswordResetToken;
 import com.medtrack.auth.repository.PasswordResetTokenRepository;
 import com.medtrack.auth.event.UserLoginEvent;
 import com.medtrack.auth.event.UserRegisteredEvent;
+
 
 /**
  * UserService encapsulates the business logic for user management, credential validation,
@@ -59,11 +65,6 @@ import com.medtrack.auth.event.UserRegisteredEvent;
 @RequiredArgsConstructor
 public class UserService {
 
-    /**
-     * List of acceptable security roles within the application system.
-     * Roles must match authorized paths configured in security configurations.
-     */
-    private static final List<String> VALID_ROLES = List.of("HOSPITAL", "TECHNICIAN", "SUPPLIER");
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     @Value("${app.jwt.expiration-ms:900000}")
@@ -92,6 +93,9 @@ public class UserService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;
     private final KafkaEventPublisher kafkaEventPublisher;
+    private final PublicRegistrationRolePolicy publicRegistrationRolePolicy;
+    private final ScimUserProvisioningService scimUserProvisioningService;
+
 
     @Value("${security.account.lock-duration:30}")
     private int lockDurationMinutes;
@@ -107,11 +111,12 @@ public class UserService {
 
     /**
      * Registers a new user account in the application database.
-     * Enforces unique email check and valid system role assignment, then encodes the password using BCrypt.
+     * Enforces the public-registration role policy and email uniqueness, then encodes the password using BCrypt.
      *
      * @param request the registration details DTO
      * @return the {@link AuthResponse} containing user profile information and generated JWT token
-     * @throws RuntimeException if the email already exists in the database or if an invalid role is provided
+     * @throws RuntimeException if the email already exists in the database
+     * @throws IllegalArgumentException if the requested role is invalid or privileged
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -120,17 +125,13 @@ public class UserService {
             throw new IllegalArgumentException("Passwords do not match");
         }
 
+        // Resolve authorization before touching persistence. Public callers may never mint
+        // the HOSPITAL authority used by administrative endpoints throughout the application.
+        String role = publicRegistrationRolePolicy.resolve(request.getRole());
+
         // Enforce email uniqueness constraint prior to registration
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new EmailAlreadyExistsException("Email already exists");
-        }
-
-        // Normalize the role string casing to uppercase for consistency in authorization checks; defaults to HOSPITAL
-        String role = request.getRole() != null ? request.getRole().toUpperCase() : "HOSPITAL";
-
-        // Validate that the assigned role is mapped to one of the authorized application roles
-        if (!VALID_ROLES.contains(role)) {
-            throw new IllegalArgumentException("Invalid role. Must be one of: HOSPITAL, TECHNICIAN, SUPPLIER");
         }
 
         // Normalize email to lowercase
@@ -159,6 +160,19 @@ public class UserService {
         // Persist the user record to the database
         User savedUser = userRepository.save(user);
 
+
+        // Cross-Subsystem Logic: Auto-provision user into SCIM 2.0 User Registry under RFC 7643
+        try {
+            ScimUserDto scimDto = new ScimUserDto();
+            scimDto.setUserName(savedUser.getUsername());
+            scimDto.setExternalId("usr_db_" + savedUser.getId());
+            scimDto.setEmails(List.of(Map.of("value", savedUser.getEmail(), "type", "work", "primary", true)));
+            scimDto.setName(Map.of("givenName", savedUser.getName(), "familyName", savedUser.getOrganization() != null ? savedUser.getOrganization() : "MedTrack Hospital"));
+            scimUserProvisioningService.createScimUser(scimDto);
+        } catch (Exception e) {
+            log.warn("SCIM 2.0 Auto-Provisioning failed for user {}: {}", savedUser.getUsername(), e.getMessage());
+        }
+
         // Publish UserRegisteredEvent
         UserRegisteredEvent registeredEvent = UserRegisteredEvent.builder()
                 .userId(savedUser.getId())
@@ -168,6 +182,7 @@ public class UserService {
                 .timestamp(java.time.Instant.now().toString())
                 .build();
         kafkaEventPublisher.publishUserRegistered(registeredEvent);
+
 
         // Map the persisted user to authentication response payload containing JWT token
         return mapToAuthResponse(savedUser, "Account created successfully");
@@ -457,5 +472,37 @@ public class UserService {
         }
 
         return token;
+    }
+
+    /**
+     * Soft deletes (archives) a user by setting the deleted flag.
+     * Only users with the ADMIN or HOSPITAL role should be able to trigger this.
+     *
+     * @param id the user id to archive
+     * @param requestedBy the username of the user requesting the archive
+     * @return the archived user
+     */
+    @Transactional
+    public User archiveUser(Long id, String requestedBy) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        user.setDeleted(true);
+        user.setDeletedAt(LocalDateTime.now());
+        user.setDeletedBy(requestedBy);
+
+        User archived = userRepository.save(user);
+
+        log.info("User archived | Requested By: {} | User ID: {} | Username: {}",
+                requestedBy, archived.getId(), archived.getUsername());
+
+        return archived;
+    }
+
+    /**
+     * Retrieves all archived (soft-deleted) users.
+     */
+    public List<User> getArchivedUsers() {
+        return userRepository.findAllDeleted();
     }
 }

@@ -49,6 +49,32 @@ public class MaintenancePolicyRule {
     @Size(max = SHORT_TEXT_MAX_LENGTH, message = "Rule name must not exceed 255 characters")
     @Column(length = SHORT_TEXT_MAX_LENGTH, nullable = false)
     private String name;
+    @NotBlank(message = "Policy code is required")
+    @Size(max = SHORT_TEXT_MAX_LENGTH,
+            message = "Policy code must not exceed 255 characters")
+    @Column(name = "policy_code", nullable = false, unique = true, length = SHORT_TEXT_MAX_LENGTH)
+    private String policyCode;
+    @NotNull(message = "Policy status is required")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    @Builder.Default
+    private MaintenancePolicyStatus status = MaintenancePolicyStatus.DRAFT;
+    @NotNull(message = "Start date is required")
+    @Column(name = "start_date", nullable = false)
+    private LocalDate startDate;
+
+    @Column(name = "next_execution_date")
+    private LocalDate nextExecutionDate;
+
+    @Column(name = "assigned_technician_id")
+    private Long assignedTechnicianId;
+
+    @Size(max = SHORT_TEXT_MAX_LENGTH,
+            message = "Assigned technician must not exceed 255 characters")
+    @Column(name = "assigned_technician", length = SHORT_TEXT_MAX_LENGTH)
+    private String assignedTechnician;
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
 
     @Size(max = SHORT_TEXT_MAX_LENGTH, message = "Rule description must not exceed 255 characters")
     @Column(length = SHORT_TEXT_MAX_LENGTH)

@@ -2,9 +2,10 @@ package com.medtrack.supplier.security;
 
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
@@ -15,15 +16,13 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for {@link SupplierAccessGuard}, the shared authorization check used by the
- * supplier order and shipment controllers/services to confirm a caller may only act on
- * their own supplier account unless they hold the HOSPITAL administrator role.
+ * Unit tests for {@link SupplierAccessGuard}.
+ * Verifies caller ID resolution, hospital admin authorization overrides,
+ * and supplier boundary checks.
  */
 @ExtendWith(MockitoExtension.class)
 public class SupplierAccessGuardTest {
@@ -31,73 +30,120 @@ public class SupplierAccessGuardTest {
     @Mock
     private UserRepository userRepository;
 
-    @InjectMocks
-    private SupplierAccessGuard supplierAccessGuard;
+    private SupplierAccessGuard accessGuard;
 
-    private Authentication authenticationFor(String email, String role) {
-        return new UsernamePasswordAuthenticationToken(email, null,
-                List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())));
+    @BeforeEach
+    void setUp() {
+        accessGuard = new SupplierAccessGuard(userRepository);
     }
 
     @Test
-    void resolveCallerId_LooksUpByEmailNotUsername() {
-        // Spring Security's principal name is the user's email (per SecurityConfig's
-        // UserDetailsService), so this must go through findByEmail - a prior bug looked
-        // up by username instead and silently fell back to a hardcoded ID.
-        Authentication supplier = authenticationFor("supplier@medtrack.org", "supplier");
-        User user = User.builder().id(30L).email("supplier@medtrack.org").username("different-username").build();
-        when(userRepository.findByEmail("supplier@medtrack.org")).thenReturn(Optional.of(user));
+    @DisplayName("resolveCallerId successfully resolves database user ID for valid principal")
+    void resolveCallerId_ValidEmail_ReturnsUserId() {
+        User mockUser = User.builder().id(10L).email("supplier@medtrack.com").build();
+        when(userRepository.findByEmail("supplier@medtrack.com")).thenReturn(Optional.of(mockUser));
 
-        assertEquals(30L, supplierAccessGuard.resolveCallerId(supplier));
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "supplier@medtrack.com", null, List.of(new SimpleGrantedAuthority("ROLE_SUPPLIER")));
+
+        Long callerId = accessGuard.resolveCallerId(auth);
+        assertEquals(10L, callerId);
     }
 
     @Test
-    void allowsHospitalAdminRegardlessOfTargetSupplier() {
-        Authentication admin = authenticationFor("admin@medtrack.org", "hospital");
+    @DisplayName("resolveCallerId normalizes the authenticated email before lookup")
+    void resolveCallerId_MixedCasePaddedEmail_NormalizesBeforeLookup() {
+        User mockUser = User.builder().id(15L).email("supplier@medtrack.com").build();
+        when(userRepository.findByEmail("supplier@medtrack.com")).thenReturn(Optional.of(mockUser));
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "  SUPPLIER@MedTrack.Com  ",
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_SUPPLIER")));
 
-        assertDoesNotThrow(() -> supplierAccessGuard.assertSelfOrHospitalAdmin(admin, 999L));
+        Long callerId = accessGuard.resolveCallerId(auth);
+
+        assertEquals(15L, callerId);
+        verify(userRepository).findByEmail("supplier@medtrack.com");
+        verifyNoMoreInteractions(userRepository);
     }
 
     @Test
-    void allowsSupplierActingOnOwnAccount() {
-        Authentication self = authenticationFor("supplier@medtrack.org", "supplier");
-        User user = User.builder().id(30L).email("supplier@medtrack.org").build();
-        when(userRepository.findByEmail("supplier@medtrack.org")).thenReturn(Optional.of(user));
+    @DisplayName("resolveCallerId fails closed when the email principal is unknown")
+    void resolveCallerId_UnknownEmail_ThrowsAccessDenied() {
+        when(userRepository.findByEmail("missing@medtrack.com")).thenReturn(Optional.empty());
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "missing@medtrack.com",
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_SUPPLIER")));
 
-        assertDoesNotThrow(() -> supplierAccessGuard.assertSelfOrHospitalAdmin(self, 30L));
+        AccessDeniedException thrown = assertThrows(
+                AccessDeniedException.class,
+                () -> accessGuard.resolveCallerId(auth));
+
+        assertEquals("Authenticated user could not be resolved", thrown.getMessage());
+        verify(userRepository).findByEmail("missing@medtrack.com");
     }
 
     @Test
-    void rejectsSupplierActingOnAnotherSuppliersAccount() {
-        Authentication other = authenticationFor("supplier@medtrack.org", "supplier");
-        User user = User.builder().id(30L).email("supplier@medtrack.org").build();
-        when(userRepository.findByEmail("supplier@medtrack.org")).thenReturn(Optional.of(user));
+    @DisplayName("resolveCallerId rejects blank principals without querying users")
+    void resolveCallerId_BlankPrincipal_ThrowsAccessDeniedWithoutLookup() {
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "   ",
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_SUPPLIER")));
 
-        assertThrows(AccessDeniedException.class,
-                () -> supplierAccessGuard.assertSelfOrHospitalAdmin(other, 999L));
+        AccessDeniedException thrown = assertThrows(
+                AccessDeniedException.class,
+                () -> accessGuard.resolveCallerId(auth));
+
+        assertEquals("Authenticated user could not be resolved", thrown.getMessage());
+        verifyNoInteractions(userRepository);
     }
 
     @Test
-    void threeArgOverload_SkipsCheckWhenNoSupplierAssignedYet() {
-        Authentication supplier = authenticationFor("supplier@medtrack.org", "supplier");
-
-        // assignedSupplierId == null means no one has been assigned to the order/shipment
-        // yet - the first supplier to act on it should be allowed through.
-        assertDoesNotThrow(() -> supplierAccessGuard.assertSelfOrHospitalAdmin(supplier, 30L, null));
+    @DisplayName("resolveCallerId throws AccessDeniedException when authentication is null")
+    void resolveCallerId_NullAuth_ThrowsAccessDenied() {
+        assertThrows(AccessDeniedException.class, () -> accessGuard.resolveCallerId(null));
     }
 
     @Test
-    void threeArgOverload_RejectsMismatchedAssignedSupplier() {
-        Authentication supplier = authenticationFor("supplier@medtrack.org", "supplier");
+    @DisplayName("assertSelfOrHospitalAdmin allows hospital admin for any target supplier")
+    void assertSelfOrHospitalAdmin_HospitalAdmin_Success() {
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "admin@medtrack.com", null, List.of(new SimpleGrantedAuthority("ROLE_HOSPITAL")));
 
-        assertThrows(AccessDeniedException.class,
-                () -> supplierAccessGuard.assertSelfOrHospitalAdmin(supplier, 30L, 999L));
+        assertDoesNotThrow(() -> accessGuard.assertSelfOrHospitalAdmin(auth, 999L));
     }
 
     @Test
-    void threeArgOverload_AllowsHospitalAdminEvenWhenMismatched() {
-        Authentication admin = authenticationFor("admin@medtrack.org", "hospital");
+    @DisplayName("assertSelfOrHospitalAdmin throws AccessDeniedException for mismatched supplier ID")
+    void assertSelfOrHospitalAdmin_MismatchedSupplierId_ThrowsAccessDenied() {
+        User mockUser = User.builder().id(10L).email("supplier@medtrack.com").build();
+        when(userRepository.findByEmail("supplier@medtrack.com")).thenReturn(Optional.of(mockUser));
 
-        assertDoesNotThrow(() -> supplierAccessGuard.assertSelfOrHospitalAdmin(admin, 30L, 999L));
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "supplier@medtrack.com", null, List.of(new SimpleGrantedAuthority("ROLE_SUPPLIER")));
+
+        assertThrows(AccessDeniedException.class, () -> accessGuard.assertSelfOrHospitalAdmin(auth, 20L));
+    }
+
+    @Test
+    @DisplayName("isSupplier returns true for authentication containing ROLE_SUPPLIER authority")
+    void isSupplier_SupplierRole_ReturnsTrue() {
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "supplier@medtrack.com", null, List.of(new SimpleGrantedAuthority("ROLE_SUPPLIER")));
+
+        assertTrue(accessGuard.isSupplier(auth));
+        assertFalse(accessGuard.isHospitalAdmin(auth));
+    }
+
+    @Test
+    @DisplayName("assertSelfOrHospitalAdmin with caller and assigned supplier IDs matches valid supplier")
+    void assertSelfOrHospitalAdmin_CallerAndAssignedSupplierId_MatchesSuccessfully() {
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                "supplier@medtrack.com", null, List.of(new SimpleGrantedAuthority("ROLE_SUPPLIER")));
+
+        assertDoesNotThrow(() -> accessGuard.assertSelfOrHospitalAdmin(auth, 10L, 10L));
+        assertThrows(AccessDeniedException.class, () -> accessGuard.assertSelfOrHospitalAdmin(auth, 10L, 20L));
     }
 }

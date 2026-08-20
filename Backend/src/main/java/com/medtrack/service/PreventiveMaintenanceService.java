@@ -7,16 +7,20 @@ import com.medtrack.dto.MaintenanceRuleRequest;
 import com.medtrack.dto.MaintenanceRuleResponse;
 import com.medtrack.dto.RulePreviewResponse;
 import com.medtrack.dto.SlaSummaryResponse;
+import com.medtrack.dto.MaintenanceRuleStatusRequest;
+import com.medtrack.model.MaintenancePolicyStatus;
 import com.medtrack.dto.TechnicianWorkloadResponse;
 import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.Equipment;
 import com.medtrack.model.EquipmentCategory;
 import com.medtrack.model.EquipmentStatus;
+import com.medtrack.model.Hospital;
 import com.medtrack.model.MaintenanceGenerationRun;
 import com.medtrack.model.MaintenancePolicyRule;
 import com.medtrack.model.MaintenanceRuleScope;
 import com.medtrack.model.MaintenanceStatus;
 import com.medtrack.model.MaintenanceTask;
+import com.medtrack.model.OperationsEvent;
 import com.medtrack.model.RecurrenceFrequency;
 import com.medtrack.model.SlaState;
 import com.medtrack.repository.EquipmentRepository;
@@ -67,6 +71,8 @@ public class PreventiveMaintenanceService {
     private final HospitalRepository hospitalRepository;
     private final UserRepository userRepository;
     private final MaintenanceActivityService activityService;
+    private final EventPublisherService eventPublisherService;
+    private final MaintenanceRuleAuditService auditService;
 
     // ------------------------------------------------------------------
     // Rule CRUD
@@ -75,7 +81,7 @@ public class PreventiveMaintenanceService {
     @Transactional
     public MaintenanceRuleResponse createRule(MaintenanceRuleRequest request, Authentication authentication) {
         Long hospitalId = getHospitalForUser(authentication).getId();
-        validateRule(request);
+        validateRule(request, hospitalId);
 
         MaintenancePolicyRule rule = MaintenancePolicyRule.builder()
                 .hospitalId(hospitalId)
@@ -104,7 +110,7 @@ public class PreventiveMaintenanceService {
         Long hospitalId = getHospitalForUser(authentication).getId();
         MaintenancePolicyRule rule = ruleRepository.findByIdAndHospitalId(id, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Maintenance rule not found or access denied"));
-        validateRule(request);
+        validateRule(request, hospitalId);
 
         rule.setName(request.getName().trim());
         rule.setDescription(request.getDescription());
@@ -125,6 +131,51 @@ public class PreventiveMaintenanceService {
         rule.setUpdatedAt(LocalDateTime.now());
 
         return MaintenanceRuleResponse.from(ruleRepository.save(rule), resolveEquipmentName(rule));
+    }
+
+    @Transactional
+    public MaintenanceRuleResponse updateRuleStatus(
+            Long id,
+            MaintenanceRuleStatusRequest request,
+            Authentication authentication) {
+
+        Long hospitalId = getHospitalForUser(authentication).getId();
+
+        MaintenancePolicyRule rule = ruleRepository.findByIdAndHospitalId(id, hospitalId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Maintenance rule not found or access denied"));
+
+        MaintenancePolicyStatus currentStatus = rule.getStatus();
+        MaintenancePolicyStatus targetStatus = request.getStatus();
+
+        if (currentStatus == targetStatus) {
+            throw new IllegalArgumentException(
+                    "Maintenance rule is already in " + targetStatus + " status");
+        }
+
+        if (!isValidStatusTransition(currentStatus, targetStatus)) {
+            throw new IllegalArgumentException(
+                    "Invalid maintenance rule status transition: "
+                            + currentStatus + " -> " + targetStatus);
+        }
+
+        rule.setStatus(targetStatus);
+        rule.setActive(targetStatus == MaintenancePolicyStatus.ACTIVE);
+        rule.setUpdatedAt(LocalDateTime.now());
+
+        MaintenancePolicyRule savedRule = ruleRepository.save(rule);
+
+        log.info(
+                "Maintenance rule {} transitioned from {} to {} for hospital {}",
+                rule.getId(),
+                currentStatus,
+                targetStatus,
+                hospitalId);
+
+        return MaintenanceRuleResponse.from(
+                savedRule,
+                resolveEquipmentName(savedRule));
     }
 
     @Transactional
@@ -151,6 +202,69 @@ public class PreventiveMaintenanceService {
         MaintenancePolicyRule rule = ruleRepository.findByIdAndHospitalId(id, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Maintenance rule not found or access denied"));
         return MaintenanceRuleResponse.from(rule, resolveEquipmentName(rule));
+    }
+
+    /**
+     * Automatically deactivates all active INDIVIDUAL_EQUIPMENT maintenance policy rules associated
+     * with an equipment record when that equipment is decommissioned or disposed.
+     *
+     * @param equipmentId target equipment record ID
+     * @param hospitalId  owning hospital ID
+     * @param username    actor or system initiator
+     * @return list of deactivated rules
+     */
+    @Transactional
+    public List<MaintenancePolicyRule> deactivateRulesForDecommissionedEquipment(
+            Long equipmentId,
+            Long hospitalId,
+            String username
+    ) {
+        if (equipmentId == null || hospitalId == null) {
+            return List.of();
+        }
+
+        List<MaintenancePolicyRule> activeRules = ruleRepository
+                .findByHospitalIdAndEquipmentRecordIdAndActiveTrue(hospitalId, equipmentId);
+        if (activeRules.isEmpty()) {
+            return List.of();
+        }
+
+        List<MaintenancePolicyRule> updatedRules = new ArrayList<>();
+        String actor = username != null && !username.isBlank() ? username.trim() : "SYSTEM";
+
+        for (MaintenancePolicyRule rule : activeRules) {
+            MaintenancePolicyStatus previousStatus = rule.getStatus() != null
+                    ? rule.getStatus()
+                    : MaintenancePolicyStatus.ACTIVE;
+
+            rule.setActive(false);
+            rule.setStatus(MaintenancePolicyStatus.ARCHIVED);
+            rule.setUpdatedAt(LocalDateTime.now());
+
+            MaintenancePolicyRule saved = ruleRepository.save(rule);
+            updatedRules.add(saved);
+
+            if (auditService != null) {
+                auditService.record(
+                        hospitalId,
+                        saved.getId(),
+                        com.medtrack.model.MaintenanceRuleAuditAction.DEACTIVATED,
+                        previousStatus,
+                        MaintenancePolicyStatus.ARCHIVED,
+                        actor,
+                        "Rule automatically deactivated due to equipment decommissioning/disposal (Equipment ID: "
+                                + equipmentId + ")"
+                );
+            }
+        }
+
+        log.info(
+                "Deactivated {} maintenance policy rule(s) for decommissioned equipment {} in hospital {}",
+                updatedRules.size(),
+                equipmentId,
+                hospitalId
+        );
+        return List.copyOf(updatedRules);
     }
 
     // ------------------------------------------------------------------
@@ -298,15 +412,65 @@ public class PreventiveMaintenanceService {
      */
     @Transactional
     public SlaSummaryResponse refreshSla(Authentication authentication) {
-        Long hospitalId = getHospitalForUser(authentication).getId();
+        Hospital hospital = getHospitalForUser(authentication);
+        return refreshSlaForHospital(hospital);
+    }
+    private boolean isValidStatusTransition(
+            MaintenancePolicyStatus currentStatus,
+            MaintenancePolicyStatus targetStatus) {
+
+        if (currentStatus == null || targetStatus == null) {
+            return false;
+        }
+
+        return switch (currentStatus) {
+            case DRAFT ->
+                    targetStatus == MaintenancePolicyStatus.ACTIVE
+                            || targetStatus == MaintenancePolicyStatus.ARCHIVED;
+
+            case ACTIVE ->
+                    targetStatus == MaintenancePolicyStatus.PAUSED
+                            || targetStatus == MaintenancePolicyStatus.COMPLETED
+                            || targetStatus == MaintenancePolicyStatus.ARCHIVED;
+
+            case PAUSED ->
+                    targetStatus == MaintenancePolicyStatus.ACTIVE
+                            || targetStatus == MaintenancePolicyStatus.COMPLETED
+                            || targetStatus == MaintenancePolicyStatus.ARCHIVED;
+
+            case COMPLETED ->
+                    targetStatus == MaintenancePolicyStatus.ARCHIVED;
+
+            case ARCHIVED -> false;
+        };
+    }
+
+    /**
+     * Hospital-agnostic entry point for {@link MaintenanceSlaAlertScheduler}: recomputes SLA
+     * state and escalation for one hospital without an {@link Authentication}, so the scheduler
+     * can sweep every hospital on a timer instead of only when a user opens the SLA dashboard.
+     */
+    @Transactional
+    public SlaSummaryResponse refreshSlaForHospitalId(Long hospitalId) {
+        Hospital hospital = hospitalRepository.findById(hospitalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found"));
+        return refreshSlaForHospital(hospital);
+    }
+
+    private SlaSummaryResponse refreshSlaForHospital(Hospital hospital) {
+        Long hospitalId = hospital.getId();
         List<MaintenanceTask> openTasks = taskRepository.findByHospitalId(hospitalId).stream()
                 .filter(task -> task.getStatus() != MaintenanceStatus.COMPLETED)
                 .toList();
 
         LocalDateTime now = LocalDateTime.now();
         for (MaintenanceTask task : openTasks) {
+            SlaState previousState = task.getSlaState();
             computeSlaState(task, now);
             taskRepository.save(task);
+            if (task.getSlaState() != previousState) {
+                publishSlaTransitionEvent(task);
+            }
         }
 
         // Escalate overdue critical tasks to the hospital account.
@@ -314,26 +478,88 @@ public class PreventiveMaintenanceService {
                 .findByHospitalIdAndSlaStateAndStatusNot(hospitalId, SlaState.BREACHED, MaintenanceStatus.COMPLETED).stream()
                 .filter(task -> "Critical".equalsIgnoreCase(task.getPriority()))
                 .toList();
-        User hospitalUser = getHospitalForUser(authentication).getUser();
+        User hospitalUser = hospital.getUser();
         for (MaintenanceTask task : breachedCritical) {
-            if (task.getSlaState() != SlaState.ESCALATED) {
-                task.setSlaState(SlaState.ESCALATED);
-                task.setEscalatedTo(hospitalUser != null ? hospitalUser.getEmail() : null);
-                taskRepository.save(task);
-            }
+            task.setSlaState(SlaState.ESCALATED);
+            task.setEscalatedTo(hospitalUser != null ? hospitalUser.getEmail() : null);
+            taskRepository.save(task);
+            activityService.recordSystemCreated(task, "escalated due to critical SLA breach");
+            publishSlaEscalatedEvent(task);
         }
 
         // Escalate unassigned high-priority tasks that are already breached.
         for (MaintenanceTask task : taskRepository.findUnassignedByPriority(
                 hospitalId, MaintenanceStatus.COMPLETED, SUGGESTION_PRIORITIES)) {
-            if (task.getSlaState() == SlaState.BREACHED && task.getEscalatedTo() == null) {
-                task.setSlaState(SlaState.ESCALATED);
-                task.setEscalatedTo(hospitalUser != null ? hospitalUser.getEmail() : null);
-                taskRepository.save(task);
-            }
+            task.setSlaState(SlaState.ESCALATED);
+            task.setEscalatedTo(hospitalUser != null ? hospitalUser.getEmail() : null);
+            taskRepository.save(task);
+            activityService.recordSystemCreated(task, "escalated due to unassigned SLA breach");
+            publishSlaEscalatedEvent(task);
         }
 
         return buildSlaSummary(hospitalId);
+    }
+
+    /**
+     * Publishes the SLA-category event for a task's new state, and mirrors a breach into the
+     * maintenance feed as {@code MAINTENANCE_OVERDUE} - the same underlying fact ("this task
+     * missed its deadline") matters to both the SLA and maintenance Activity Center tabs.
+     */
+    private void publishSlaTransitionEvent(MaintenanceTask task) {
+        if (task.getSlaState() == SlaState.WARNING) {
+            eventPublisherService.publishEvent(
+                    task.getHospitalId(),
+                    OperationsEvent.EventCategory.SLA,
+                    OperationsEvent.EventType.SLA_WARNING,
+                    "SLA warning: " + task.getEquipment(),
+                    slaEventDetail(task),
+                    task.getId(),
+                    OperationsEvent.EntityType.MAINTENANCE_TASK,
+                    "system",
+                    OperationsEvent.EventSeverity.WARNING);
+        } else if (task.getSlaState() == SlaState.BREACHED) {
+            eventPublisherService.publishEvent(
+                    task.getHospitalId(),
+                    OperationsEvent.EventCategory.SLA,
+                    OperationsEvent.EventType.SLA_BREACHED,
+                    "SLA breached: " + task.getEquipment(),
+                    slaEventDetail(task),
+                    task.getId(),
+                    OperationsEvent.EntityType.MAINTENANCE_TASK,
+                    "system",
+                    OperationsEvent.EventSeverity.CRITICAL);
+            eventPublisherService.publishEvent(
+                    task.getHospitalId(),
+                    OperationsEvent.EventCategory.MAINTENANCE,
+                    OperationsEvent.EventType.MAINTENANCE_OVERDUE,
+                    "Overdue: " + task.getEquipment(),
+                    slaEventDetail(task),
+                    task.getId(),
+                    OperationsEvent.EntityType.MAINTENANCE_TASK,
+                    "system",
+                    OperationsEvent.EventSeverity.WARNING);
+        }
+    }
+
+    private void publishSlaEscalatedEvent(MaintenanceTask task) {
+        eventPublisherService.publishEvent(
+                task.getHospitalId(),
+                OperationsEvent.EventCategory.SLA,
+                OperationsEvent.EventType.SLA_ESCALATED,
+                "SLA escalated: " + task.getEquipment(),
+                slaEventDetail(task),
+                task.getId(),
+                OperationsEvent.EntityType.MAINTENANCE_TASK,
+                "system",
+                OperationsEvent.EventSeverity.CRITICAL);
+    }
+
+    private String slaEventDetail(MaintenanceTask task) {
+        return "{"
+                + "\"taskCode\":\"" + (task.getTaskCode() != null ? task.getTaskCode() : "") + "\","
+                + "\"priority\":\"" + (task.getPriority() != null ? task.getPriority() : "") + "\","
+                + "\"deadline\":\"" + (task.getDeadline() != null ? task.getDeadline() : "") + "\""
+                + "}";
     }
 
     private void computeSlaState(MaintenanceTask task, LocalDateTime now) {
@@ -538,10 +764,30 @@ public class PreventiveMaintenanceService {
 
         List<PlannedOccurrence> plannedOccurrences = new ArrayList<>();
         Set<LocalDate> dueDates = new LinkedHashSet<>();
+        List<MaintenanceStatus> activeStatuses = List.of(
+                MaintenanceStatus.SCHEDULED,
+                MaintenanceStatus.IN_PROGRESS,
+                MaintenanceStatus.NEEDS_PART,
+                MaintenanceStatus.ON_HOLD
+        );
+        String ruleMaintType = rule.getMaintenanceType() != null ? rule.getMaintenanceType().trim() : "";
+
         for (Equipment equipment : matchedEquipment) {
+            boolean hasActive = taskRepository.existsActiveTaskForEquipmentWithCode(
+                    hospitalId,
+                    equipment.getId(),
+                    equipment.getEquipmentCode(),
+                    ruleMaintType,
+                    activeStatuses
+            );
+            if (hasActive) {
+                continue;
+            }
             LocalDate latestDeadline = latestDeadlineByEquipment.get(equipment.getId());
             for (LocalDate deadline : computeDueDates(rule, start, end, latestDeadline)) {
-                plannedOccurrences.add(new PlannedOccurrence(equipment, deadline));
+                if (!existingInWindow.contains(new OccurrenceKey(equipment.getId(), deadline))) {
+                    plannedOccurrences.add(new PlannedOccurrence(equipment, deadline));
+                }
                 dueDates.add(deadline);
             }
         }
@@ -567,13 +813,20 @@ public class PreventiveMaintenanceService {
             LocalDate latestGeneratedDeadline) {
         validateWindow(start, end);
         List<LocalDate> dueDates = new ArrayList<>();
-        LocalDate cursor = latestGeneratedDeadline == null
-                ? start
-                : nextOccurrence(latestGeneratedDeadline, rule);
+
+        // Every occurrence is measured from a fixed anchor rather than from the previous
+        // occurrence. Chaining loses the anchor's day of month the first time it is clamped: a
+        // monthly rule anchored on the 31st produces 31 Jan -> 28 Feb, and chaining from 28 Feb
+        // then yields 28 Mar, so the schedule slips three days permanently after one February.
+        // Anchoring gives 31 Jan, 28 Feb, 31 Mar, which is what a monthly schedule means.
+        LocalDate anchor = latestGeneratedDeadline == null ? start : latestGeneratedDeadline;
+        int step = latestGeneratedDeadline == null ? 0 : 1;
+        LocalDate cursor = occurrenceAt(anchor, rule, step);
         int safety = 0;
 
         while (cursor.isBefore(start) && safety < MAX_OCCURRENCES_PER_EQUIPMENT) {
-            cursor = nextOccurrence(cursor, rule);
+            step++;
+            cursor = occurrenceAt(anchor, rule, step);
             safety++;
         }
         if (cursor.isBefore(start)) {
@@ -584,7 +837,8 @@ public class PreventiveMaintenanceService {
         }
         while (!cursor.isAfter(end) && safety < MAX_OCCURRENCES_PER_EQUIPMENT) {
             dueDates.add(cursor);
-            cursor = nextOccurrence(cursor, rule);
+            step++;
+            cursor = occurrenceAt(anchor, rule, step);
             safety++;
         }
         if (!cursor.isAfter(end)) {
@@ -596,20 +850,29 @@ public class PreventiveMaintenanceService {
         return List.copyOf(dueDates);
     }
 
-    private LocalDate nextOccurrence(LocalDate current, MaintenancePolicyRule rule) {
+    /**
+     * The occurrence {@code step} intervals after {@code anchor}.
+     *
+     * <p>Offsetting from the anchor rather than from the previous occurrence is what keeps a
+     * month-end schedule on the month end. {@link LocalDate#plusMonths} clamps into a short month
+     * but keeps the anchor's day for every later month, so an anchor of 31 January yields
+     * 28 February and then 31 March.</p>
+     */
+    private LocalDate occurrenceAt(LocalDate anchor, MaintenancePolicyRule rule, int step) {
         RecurrenceFrequency frequency = rule.getFrequency();
         if (frequency == null) {
-            return current.plusDays(1);
+            return anchor.plusDays(step);
         }
         return switch (frequency) {
-            case DAILY -> current.plusDays(1);
-            case WEEKLY -> current.plusWeeks(1);
-            case MONTHLY -> current.with(TemporalAdjusters.firstDayOfNextMonth());
-            case QUARTERLY -> current.with(TemporalAdjusters.firstDayOfNextMonth())
-                    .plusMonths(2);
-            case YEARLY -> current.with(TemporalAdjusters.firstDayOfNextMonth())
-                    .plusMonths(11);
-            case CUSTOM -> current.plusDays(rule.getCustomIntervalDays() != null ? rule.getCustomIntervalDays() : 7);
+            case DAILY -> anchor.plusDays(step);
+            case WEEKLY -> anchor.plusWeeks(step);
+            case BIWEEKLY -> anchor.plusWeeks(2L * step);
+            case MONTHLY -> anchor.plusMonths(step);
+            case QUARTERLY -> anchor.plusMonths(3L * step);
+            case SEMIANNUAL -> anchor.plusMonths(6L * step);
+            case YEARLY -> anchor.plusYears(step);
+            case CUSTOM -> anchor.plusDays(
+                    (long) step * (rule.getCustomIntervalDays() != null ? rule.getCustomIntervalDays() : 7));
         };
     }
 
@@ -638,12 +901,19 @@ public class PreventiveMaintenanceService {
                 .map(Equipment::getName).orElse(null);
     }
 
-    private void validateRule(MaintenanceRuleRequest request) {
+    private void validateRule(MaintenanceRuleRequest request, Long hospitalId) {
         if (request.getRuleScope() == MaintenanceRuleScope.EQUIPMENT_CATEGORY && request.getEquipmentCategory() == null) {
             throw new IllegalArgumentException("Equipment category rules require an equipment category");
         }
-        if (request.getRuleScope() == MaintenanceRuleScope.INDIVIDUAL_EQUIPMENT && request.getEquipmentRecordId() == null) {
-            throw new IllegalArgumentException("Individual equipment rules require an equipment record");
+        if (request.getRuleScope() == MaintenanceRuleScope.INDIVIDUAL_EQUIPMENT) {
+            if (request.getEquipmentRecordId() == null) {
+                throw new IllegalArgumentException("Individual equipment rules require an equipment record");
+            }
+            Equipment equipment = equipmentRepository.findByIdAndHospitalId(request.getEquipmentRecordId(), hospitalId)
+                    .orElseThrow(() -> new IllegalArgumentException("Equipment record not found or access denied for hospital"));
+            if (equipment.getStatus() == EquipmentStatus.RETIRED || equipment.getStatus() == EquipmentStatus.DISPOSED) {
+                throw new IllegalArgumentException("Retired or disposed equipment cannot be scheduled for preventive maintenance");
+            }
         }
         if (request.getRuleScope() == MaintenanceRuleScope.MANUFACTURER_INTERVAL
                 && (request.getManufacturer() == null || request.getManufacturer().isBlank())) {
@@ -664,7 +934,7 @@ public class PreventiveMaintenanceService {
         }
     }
 
-    private com.medtrack.model.Hospital getHospitalForUser(Authentication authentication) {
+    private Hospital getHospitalForUser(Authentication authentication) {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("An active hospital account is required");
         }

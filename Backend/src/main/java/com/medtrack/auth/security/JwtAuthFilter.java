@@ -1,6 +1,7 @@
 package com.medtrack.auth.security;
 
 import com.medtrack.auth.authority.service.AuthorityService;
+import com.medtrack.auth.jwt.service.JwtSecurityTokenService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,6 +49,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
      */
     private final AuthorityService authorityService;
 
+    private final JwtSecurityTokenService jwtSecurityTokenService;
+
     /**
      * Intercepts incoming requests to extract the JWT token from the authorization header,
      * validate it, and authenticate the client if the token is valid.
@@ -93,8 +96,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 boolean authorityStillValid = userId == null || authorityService.validateAuthorityVersion(
                         userId, jwtUtil.extractAuthorityVersion(token));
 
-                if (jwtUtil.isTokenValid(token, email) && authorityStillValid) {
+                // Check JTI revocation status if JTI claim exists
+                String jti = jwtUtil.extractJti(token);
+                var tokenValidationResult = jti != null ? jwtSecurityTokenService.validateJwtToken(jti) : null;
+                boolean jtiValid = jti == null || (tokenValidationResult != null && tokenValidationResult.isValid());
+
+                if (jwtUtil.isTokenValid(token, email) && authorityStillValid && jtiValid) {
                     // Map the user's role to a Spring Security authority with a "ROLE_" prefix.
+
                     // This matches the role mappings expected by Spring Security's hasRole() rules.
                     var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
 

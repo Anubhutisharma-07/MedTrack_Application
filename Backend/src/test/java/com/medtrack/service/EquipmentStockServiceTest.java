@@ -51,6 +51,12 @@ class EquipmentStockServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private EventPublisherService eventPublisherService;
+
+    @Mock
+    private EquipmentStatisticsService equipmentStatisticsService;
+
     @InjectMocks
     private EquipmentService equipmentService;
 
@@ -225,8 +231,11 @@ class EquipmentStockServiceTest {
         }
 
         @Test
-        @DisplayName("rejects a negative reorder threshold")
+        @DisplayName("rejects a negative reorder threshold (defense-in-depth)")
         void rejectsNegativeThreshold() {
+            // This test validates the service-level defense-in-depth check.
+            // The primary validation is handled by @Min(0) on the DTO field,
+            // which is enforced by @Valid in the controller before reaching the service.
             assertThrows(IllegalArgumentException.class, () ->
                     equipmentService.adjustStock(
                             EQUIPMENT_ID,
@@ -287,46 +296,65 @@ class EquipmentStockServiceTest {
         @DisplayName("counts low, out-of-stock and total units")
         void countsAcrossInventory() {
             givenAuthenticatedHospital();
-            when(equipmentRepository.findByHospitalId(HOSPITAL_ID)).thenReturn(List.of(
-                    equipmentWithStock(50, 10),  // healthy
-                    equipmentWithStock(10, 10),  // at threshold -> low
-                    equipmentWithStock(3, 10),   // below threshold -> low
-                    equipmentWithStock(0, 5)     // low and out of stock
-            ));
+            LowStockSummaryResponse summary = LowStockSummaryResponse.builder()
+                    .totalTrackedItems(4)
+                    .lowStockItems(3)
+                    .outOfStockItems(1)
+                    .totalUnitsInStock(63)
+                    .build();
+            when(equipmentStatisticsService.getLowStockSummary(hospital))
+                    .thenReturn(summary);
 
-            LowStockSummaryResponse summary = equipmentService.getLowStockSummary(USERNAME);
+            LowStockSummaryResponse result = equipmentService.getLowStockSummary(USERNAME);
 
-            assertEquals(4, summary.getTotalTrackedItems());
-            assertEquals(3, summary.getLowStockItems(), "at-threshold counts as low");
-            assertEquals(1, summary.getOutOfStockItems());
-            assertEquals(63, summary.getTotalUnitsInStock());
+            assertEquals(4, result.getTotalTrackedItems());
+            assertEquals(3, result.getLowStockItems(), "at-threshold counts as low");
+            assertEquals(1, result.getOutOfStockItems());
+            assertEquals(63, result.getTotalUnitsInStock());
+            verify(equipmentStatisticsService).getLowStockSummary(hospital);
         }
 
         @Test
         @DisplayName("returns zeroes for an empty inventory")
         void handlesEmptyInventory() {
             givenAuthenticatedHospital();
-            when(equipmentRepository.findByHospitalId(HOSPITAL_ID)).thenReturn(List.of());
+            LowStockSummaryResponse summary = LowStockSummaryResponse.builder()
+                    .totalTrackedItems(0)
+                    .lowStockItems(0)
+                    .outOfStockItems(0)
+                    .totalUnitsInStock(0)
+                    .build();
+            when(equipmentStatisticsService.getLowStockSummary(hospital))
+                    .thenReturn(summary);
 
-            LowStockSummaryResponse summary = equipmentService.getLowStockSummary(USERNAME);
+            LowStockSummaryResponse result = equipmentService.getLowStockSummary(USERNAME);
 
-            assertEquals(0, summary.getTotalTrackedItems());
-            assertEquals(0, summary.getLowStockItems());
-            assertEquals(0, summary.getOutOfStockItems());
-            assertEquals(0, summary.getTotalUnitsInStock());
+            assertEquals(0, result.getTotalTrackedItems());
+            assertEquals(0, result.getLowStockItems());
+            assertEquals(0, result.getOutOfStockItems());
+            assertEquals(0, result.getTotalUnitsInStock());
+            verify(equipmentStatisticsService).getLowStockSummary(hospital);
         }
 
         @Test
         @DisplayName("counts an out-of-stock item once, not twice")
         void outOfStockIsSubsetOfLowStock() {
             givenAuthenticatedHospital();
-            when(equipmentRepository.findByHospitalId(HOSPITAL_ID))
-                    .thenReturn(List.of(equipmentWithStock(0, 10)));
+            LowStockSummaryResponse summary = LowStockSummaryResponse.builder()
+                    .totalTrackedItems(1)
+                    .lowStockItems(1)
+                    .outOfStockItems(1)
+                    .totalUnitsInStock(0)
+                    .build();
+            when(equipmentStatisticsService.getLowStockSummary(hospital))
+                    .thenReturn(summary);
 
-            LowStockSummaryResponse summary = equipmentService.getLowStockSummary(USERNAME);
+            LowStockSummaryResponse result = equipmentService.getLowStockSummary(USERNAME);
 
-            assertEquals(1, summary.getLowStockItems());
-            assertEquals(1, summary.getOutOfStockItems());
+            assertEquals(1, result.getLowStockItems());
+            assertEquals(1, result.getOutOfStockItems());
+            verify(equipmentStatisticsService).getLowStockSummary(hospital);
+        }
         }
     }
 

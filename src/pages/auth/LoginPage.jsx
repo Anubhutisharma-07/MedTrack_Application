@@ -2,7 +2,9 @@ import { useState } from "react";
 import { ArrowLeft, ChevronDown, Hospital, Layers, Lock, Mail, Wrench } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { loginUser } from "../../services/AuthService";
+import { buildHref } from "../../routes/routeRegistry";
 import MedTrackLogo from "../../components/common/MedTrackLogo";
+import SessionEndNotice from "../../components/auth/SessionEndNotice";
 import "./auth.css";
 
 // Pre-filled only in non-production builds, as a local-dev convenience that
@@ -16,7 +18,7 @@ const DEMO_CREDENTIALS = {
 };
 
 export default function LoginPage({ onNavigate }) {
-  const { login } = useAuth();
+  const { login, revokedReason, clearRevokedReason } = useAuth();
   const [selectedRole, setSelectedRole] = useState("hospital");
   const [email, setEmail] = useState(isDevBuild ? DEMO_CREDENTIALS.hospital.email : "");
   const [password, setPassword] = useState(isDevBuild ? DEMO_CREDENTIALS.hospital.password : "");
@@ -74,7 +76,7 @@ export default function LoginPage({ onNavigate }) {
     <main className="split-auth-container">
       <section className="split-form-section" style={{ position: 'relative' }}>
         <button 
-          onClick={() => onNavigate ? onNavigate('home') : window.location.href = '/'} 
+          onClick={() => onNavigate ? onNavigate('landing') : window.location.href = buildHref('landing')} 
           style={{ position: 'absolute', top: '40px', left: '40px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500' }}
         >
           <ArrowLeft size={20} /> Back
@@ -83,6 +85,16 @@ export default function LoginPage({ onNavigate }) {
           <h1>Welcome back!</h1>
           <p>Simplify your workflow and boost your productivity with MedTrack. Get started for free.</p>
         </div>
+
+        {/* Shown only when the previous session ended for a reason worth
+            explaining (admin revocation, inactivity lock). Dismissed by
+            clearRevokedReason; a normal sign-out passes no reason. */}
+        {revokedReason && (
+          <SessionEndNotice
+            reason={revokedReason}
+            onDismiss={clearRevokedReason}
+          />
+        )}
 
         {error && <div className="error-message">{error}</div>}
 
@@ -165,7 +177,7 @@ export default function LoginPage({ onNavigate }) {
         <footer className="auth-footer" style={{ marginTop: "24px" }}>
           <span>Not a member?</span>
           <a
-            href="/register"
+            href={buildHref("register")}
             className="split-footer-link"
             onClick={(e) => {
               if (onNavigate) {

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -54,12 +55,37 @@ public class SupplierOrderServiceTest {
 
         private SupplierOrderService supplierOrderService;
 
+        @Mock
+        private SupplierAuditLogService auditLogService;
+
+        @Mock
+        private com.medtrack.supplier.workflow.ShipmentWorkflowOrchestrator orchestrator;
+
+        @Mock
+        private com.medtrack.supplier.metrics.MetricsService metricsService;
+
         @BeforeEach
-        void setUp() {
+        void setUp() throws Exception {
+                MockitoAnnotations.openMocks(this);
                 supplierOrderService = new SupplierOrderService(orderRepository, shipmentTrackingRepository,
-                                supplierAccessGuard, supplierPerformanceService);
+                                supplierAccessGuard, supplierPerformanceService, auditLogService, orchestrator,
+                                metricsService);
                 ReflectionTestUtils.setField(supplierOrderService, "kafkaTemplate", kafkaTemplate);
                 ReflectionTestUtils.setField(supplierOrderService, "orderEventsTopic", "order-events");
+
+                org.mockito.Mockito.lenient()
+                                .when(metricsService.recordProcessingLatency(anyString(),
+                                                any(java.util.concurrent.Callable.class)))
+                                .thenAnswer(invocation -> {
+                                        java.util.concurrent.Callable<?> callable = invocation.getArgument(1);
+                                        try {
+                                                return callable.call();
+                                        } catch (RuntimeException re) {
+                                                throw re;
+                                        } catch (Exception e) {
+                                                throw new RuntimeException(e);
+                                        }
+                                });
         }
 
         @Test
@@ -283,6 +309,7 @@ public class SupplierOrderServiceTest {
         void updateOrderStatus_InvalidTransition_ThrowsInvalidStatusTransitionException() {
                 EquipmentOrder order = EquipmentOrder.builder().id(1L).status("PENDING").build();
                 when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+                doThrow(new InvalidStatusTransitionException("msg")).when(orchestrator).validateStateTransition(any(), any());
 
                 assertThrows(InvalidStatusTransitionException.class,
                                 () -> supplierOrderService.updateOrderStatus(1L, "SHIPPED", authentication));
@@ -292,6 +319,7 @@ public class SupplierOrderServiceTest {
         void updateOrderStatus_SameStateTransition_ThrowsInvalidStatusTransitionException() {
                 EquipmentOrder order = EquipmentOrder.builder().id(1L).status("CONFIRMED").build();
                 when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+                doThrow(new InvalidStatusTransitionException("msg")).when(orchestrator).validateStateTransition(any(), any());
 
                 assertThrows(InvalidStatusTransitionException.class,
                                 () -> supplierOrderService.updateOrderStatus(1L, "CONFIRMED", authentication));

@@ -1,6 +1,7 @@
 import React from "react";
 import PasskeyPasswordlessPanel from "../../components/auth/PasskeyPasswordlessPanel";
 import { ArrowLeft, Fingerprint, ShieldCheck } from "lucide-react";
+import { buildHref } from "../../routes/routeRegistry";
 import "./auth.css";
 
 /**
@@ -17,7 +18,7 @@ export default function PasskeyPasswordlessPage({ onNavigate }) {
         <div className="flex items-center justify-between">
           <button
             type="button"
-            onClick={() => onNavigate ? onNavigate("dashboard") : (window.location.href = "/dashboard")}
+            onClick={() => onNavigate ? onNavigate("dashboard") : (window.location.href = buildHref("dashboard"))}
             className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white transition group"
           >
             <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
@@ -48,7 +49,7 @@ export default function PasskeyPasswordlessPage({ onNavigate }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => onNavigate ? onNavigate("security") : (window.location.href = "/security")}
+              onClick={() => onNavigate ? onNavigate("security") : (window.location.href = buildHref("security"))}
               className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition"
             >
               Enterprise Security Hub

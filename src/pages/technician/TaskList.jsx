@@ -54,7 +54,7 @@ export default function TaskList({ onNavigate }) {
 
     if (match) {
       setScanMessage(null);
-      onNavigate("update-task", match);
+      onNavigate("update-task", match.id);
     } else {
       setScanMessage(
         `No open task found for asset "${parsed.id}". If the task was assigned to you, it may have been completed already.`
@@ -178,7 +178,7 @@ export default function TaskList({ onNavigate }) {
                 </div>
                 {user?.role === "technician" ? (
                   <button 
-                    onClick={() => onNavigate('update-task', task)}
+                    onClick={() => onNavigate('update-task', task.id)}
                     className={`px-6 py-2.5 rounded-xl font-bold transition-all duration-300 ${
                       task.status === 'Completed' 
                         ? 'bg-emerald-50 text-emerald-600 cursor-default'
@@ -196,7 +196,7 @@ export default function TaskList({ onNavigate }) {
                   </button>
                 ) : (
                   <button 
-                    onClick={() => onNavigate('update-task', task)}
+                    onClick={() => onNavigate('update-task', task.id)}
                     className="px-6 py-2.5 rounded-xl font-bold transition-all duration-300 bg-slate-100 hover:bg-slate-200 text-slate-700 active:scale-95 shadow-sm"
                   >
                     View Details

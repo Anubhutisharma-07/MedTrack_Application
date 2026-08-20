@@ -135,6 +135,32 @@ class ArchivedEquipmentRepositoryTest {
     }
 
     @Test
+    @DisplayName("the destructive archive lookup resolves only the owning hospital's asset")
+    void destructiveArchiveLookupIsTenantScoped() {
+        Equipment mine = saveEquipment(hospital, "EQ-ARCH-OWNER", true);
+        Equipment theirs = saveEquipment(otherHospital, "EQ-ARCH-RIVAL", true);
+
+        assertTrue(equipmentRepository
+                        .findArchivedByIdAndHospitalId(mine.getId(), hospital.getId())
+                        .isPresent());
+        assertTrue(equipmentRepository
+                        .findArchivedByIdAndHospitalId(theirs.getId(), hospital.getId())
+                        .isEmpty(),
+                "an archived ID from another hospital must not cross the repository boundary");
+    }
+
+    @Test
+    @DisplayName("the destructive archive lookup never resolves a live asset")
+    void destructiveArchiveLookupRejectsLiveAssets() {
+        Equipment live = saveEquipment(hospital, "EQ-LIVE-OWNER", false);
+
+        assertTrue(equipmentRepository
+                        .findArchivedByIdAndHospitalId(live.getId(), hospital.getId())
+                        .isEmpty(),
+                "tenant scoping must not weaken the archived-only predicate");
+    }
+
+    @Test
     @DisplayName("the archive listing returns the hospital's archived assets")
     void archiveListingReturnsArchivedAssets() {
         saveEquipment(hospital, "EQ-ARCH-2", true);

@@ -79,7 +79,7 @@ export default function SupplierCentrePage({ onNavigate }) {
 
           <div className="mt-8 flex justify-center gap-4">
             <button
-              onClick={() => onNavigate("register", "Supplier")}
+              onClick={() => onNavigate("register", { defaultRole: "Supplier" })}
               className="px-6 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/15"
             >
               Register Free Profile
@@ -177,7 +177,7 @@ export default function SupplierCentrePage({ onNavigate }) {
               Registering takes less than 5 minutes. Start receiving digitized orders and request-for-quotes immediately.
             </p>
             <button
-              onClick={() => onNavigate("register", "Supplier")}
+              onClick={() => onNavigate("register", { defaultRole: "Supplier" })}
               className="px-6 py-3 bg-white text-blue-600 font-bold rounded-2xl hover:bg-blue-50 transition-all shadow-md"
             >
               Get Started as Supplier

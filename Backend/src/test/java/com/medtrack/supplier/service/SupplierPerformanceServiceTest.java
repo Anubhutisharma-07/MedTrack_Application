@@ -23,11 +23,14 @@ public class SupplierPerformanceServiceTest {
     @Mock
     private ShipmentTrackingRepository shipmentTrackingRepository;
 
+    @Mock
+    private com.medtrack.supplier.metrics.MetricsService metricsService;
+
     private SupplierPerformanceService service;
 
     @BeforeEach
     void setUp() {
-        service = new SupplierPerformanceService(shipmentTrackingRepository);
+        service = new SupplierPerformanceService(shipmentTrackingRepository, metricsService);
         ReflectionTestUtils.setField(service, "onTimeWeight", 0.8);
         ReflectionTestUtils.setField(service, "delayPenaltyWeight", 20.0);
     }

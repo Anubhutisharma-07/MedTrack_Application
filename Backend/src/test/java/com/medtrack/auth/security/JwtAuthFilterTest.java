@@ -33,6 +33,9 @@ public class JwtAuthFilterTest {
     @Mock
     private AuthorityService authorityService;
 
+    @Mock
+    private com.medtrack.auth.jwt.service.JwtSecurityTokenService jwtSecurityTokenService;
+
     private JwtUtil jwtUtil;
     private JwtAuthFilter jwtAuthFilter;
 
@@ -43,7 +46,7 @@ public class JwtAuthFilterTest {
                 "medtrack-super-secret-key-change-this-in-production-1234567890");
         org.springframework.test.util.ReflectionTestUtils.setField(jwtUtil, "expirationMs", 900000L);
 
-        jwtAuthFilter = new JwtAuthFilter(jwtUtil, authorityService);
+        jwtAuthFilter = new JwtAuthFilter(jwtUtil, authorityService, jwtSecurityTokenService);
     }
 
     @AfterEach
@@ -55,6 +58,7 @@ public class JwtAuthFilterTest {
     void doFilterInternal_AuthenticatesWhenAuthorityVersionCurrent() throws Exception {
         String token = jwtUtil.generateToken(10L, "hospital@medtrack.org", "hospital", 3L);
         when(authorityService.validateAuthorityVersion(10L, 3L)).thenReturn(true);
+        when(jwtSecurityTokenService.validateJwtToken(any())).thenReturn(new com.medtrack.auth.jwt.dto.JwtTokenValidationResponse(true, null, "hospital@medtrack.org", java.util.List.of("ROLE_HOSPITAL"), "key-1", "HS256"));
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + token);

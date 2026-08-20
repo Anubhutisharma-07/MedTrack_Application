@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST Controller for STIX/TAXII Threat Intelligence & Firewall Auto-Mitigation.
@@ -58,10 +59,33 @@ public class ThreatIntelligenceController {
         return ResponseEntity.ok(indicators);
     }
 
-    @GetMapping("/mitigate/logs")
-    @Operation(summary = "Get Mitigation Logs", description = "Retrieves execution history of firewall/WAF mitigation blocks.")
-    public ResponseEntity<List<ThreatMitigationLogResponse>> getAllMitigationLogs() {
-        List<ThreatMitigationLogResponse> logs = threatIntelService.getAllMitigationLogs();
-        return ResponseEntity.ok(logs);
+    @PostMapping("/stix/bundle")
+    @Operation(summary = "Ingest STIX 2.1 Bundle", description = "Simulates automated ingestion of STIX/TAXII 2.1 Threat Intelligence Bundle.")
+    public ResponseEntity<Map<String, Object>> ingestStixBundle(@Valid @RequestBody List<IngestIndicatorRequest> requests,
+                                                               @RequestParam(required = false) String bundleSource) {
+        Map<String, Object> response = threatIntelService.ingestStixBundle(requests, bundleSource);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/lookup/{indicatorValue}")
+    @Operation(summary = "Lookup Threat Indicator", description = "Performs real-time threat score and risk level lookup for IP, domain, or file hash.")
+    public ResponseEntity<Map<String, Object>> lookupThreatIndicator(@PathVariable String indicatorValue) {
+        Map<String, Object> response = threatIntelService.lookupThreatIndicator(indicatorValue);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/mitigate/auto-block-all")
+    @Operation(summary = "Auto-Block All High Confidence IOCs", description = "Executes mass automated firewall blocking for all active high-confidence IOCs.")
+    public ResponseEntity<Map<String, Object>> autoBlockAllHighConfidence() {
+        Map<String, Object> response = threatIntelService.autoBlockAllHighConfidenceIndicators();
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/metrics")
+    @Operation(summary = "Get CTI Audit Metrics", description = "Retrieves NIST SP 800-150 compliance and threat intelligence distribution metrics.")
+    public ResponseEntity<Map<String, Object>> getMetrics() {
+        Map<String, Object> metrics = threatIntelService.getThreatIntelAuditMetrics();
+        return ResponseEntity.ok(metrics);
     }
 }
+

@@ -97,7 +97,7 @@ public class ShipmentTrackingControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidRequest)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.detail").value("Validation failed"))
                 .andExpect(jsonPath("$.errors.orderId").exists())
                 .andExpect(jsonPath("$.errors.shipmentTrackingNumber").exists())
                 .andExpect(jsonPath("$.errors.carrier").exists())
@@ -140,7 +140,7 @@ public class ShipmentTrackingControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Cannot revert status from SHIPPED to PENDING"));
+                .andExpect(jsonPath("$.detail").value("Cannot revert status from SHIPPED to PENDING"));
     }
 
     @Test
@@ -150,7 +150,7 @@ public class ShipmentTrackingControllerTest {
 
         mockMvc.perform(get("/api/shipments/999"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Shipment tracking not found with ID: 999"));
+                .andExpect(jsonPath("$.detail").value("Shipment tracking not found with ID: 999"));
     }
 
     @Test

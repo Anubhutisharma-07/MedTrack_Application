@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   // Vite 8 defaults JSX to the classic runtime, which compiles every tag to
@@ -8,6 +8,7 @@ export default defineConfig({
   // failed with `ReferenceError: React is not defined` before a single assertion ran.
   esbuild: { jsx: "automatic" },
   test: {
+    exclude: ["**/node_modules/**", "**/.worktrees/**", "**/Backend/**"],
     environment: "jsdom",
     setupFiles: ["./src/setupTests.js"],
     globals: true,

@@ -236,6 +236,14 @@ class SecurityConfigAccessControlTest {
                 path + " must stay public: a user cannot authenticate in order to authenticate.");
     }
 
+    @Test
+    @DisplayName("the operations event stream is hospital-only")
+    void operationsEventStreamIsHospitalOnly() throws Exception {
+        String path = "/api/events/stream/info";
+        assertEquals(403, call(HttpMethod.GET, path, technician()).getResponse().getStatus());
+        assertNotEquals(403, call(HttpMethod.GET, path, hospitalAdmin()).getResponse().getStatus());
+    }
+
     /**
      * Records what this suite is responsible for, so a route added under one of these trees later
      * is noticed rather than silently uncovered.

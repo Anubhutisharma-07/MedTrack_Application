@@ -6,10 +6,13 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Arrays;
 
 public enum RecurrenceFrequency {
+
     DAILY("Daily"),
     WEEKLY("Weekly"),
+    BIWEEKLY("Biweekly"),
     MONTHLY("Monthly"),
     QUARTERLY("Quarterly"),
+    SEMIANNUAL("Semiannual"),
     YEARLY("Yearly"),
     CUSTOM("Custom");
 
@@ -27,9 +30,12 @@ public enum RecurrenceFrequency {
     @JsonCreator
     public static RecurrenceFrequency fromValue(String value) {
         return Arrays.stream(values())
-                .filter(frequency -> frequency.displayName.equalsIgnoreCase(value)
-                        || frequency.name().equalsIgnoreCase(value))
+                .filter(frequency ->
+                        frequency.displayName.equalsIgnoreCase(value)
+                                || frequency.name().equalsIgnoreCase(value))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Unknown recurrence frequency: " + value));
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Unknown recurrence frequency: " + value));
     }
 }

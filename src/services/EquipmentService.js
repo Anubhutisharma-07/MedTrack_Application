@@ -1,8 +1,9 @@
 import API from "./HttpService";
 
 // Fetch equipment with pagination
-export const getAllEquipment = async (page = 0, size = 20) => {
-  const response = await API.get(`/api/equipment?page=${page}&size=${size}`);
+export const getAllEquipment = async (page = 0, size = 20, locationId = null) => {
+  const locationParam = locationId ? `&locationId=${locationId}` : "";
+  const response = await API.get(`/api/equipment?page=${page}&size=${size}${locationParam}`);
   return response.data;
 };
 
@@ -95,5 +96,138 @@ export const rejectEquipmentLifecycleAction = async (actionId, reason = "") => {
 
 export const completeEquipmentLifecycleAction = async (actionId) => {
   const response = await API.post(`/api/equipment/lifecycle/${actionId}/complete`);
+  return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// Retirement / disposal workflow (issue #744)
+// ---------------------------------------------------------------------------
+
+// Retired and disposed assets, paginated - the dedicated retired view.
+export const getRetiredEquipment = async (page = 0, size = 20) => {
+  const response = await API.get(`/api/equipment/retired?page=${page}&size=${size}`);
+  return response.data;
+};
+
+// Open a decommissioning request for one asset.
+export const requestEquipmentDisposal = async (id, data) => {
+  const response = await API.post(`/api/equipment/${id}/disposal`, data);
+  return response.data;
+};
+
+// Disposal records for a single asset.
+export const getEquipmentDisposals = async (id) => {
+  const response = await API.get(`/api/equipment/${id}/disposals`);
+  return response.data;
+};
+
+// Disposals awaiting manager approval.
+export const getPendingDisposals = async () => {
+  const response = await API.get("/api/equipment/disposals/pending");
+  return response.data;
+};
+
+// Full disposal history for the hospital.
+export const getDisposalHistory = async () => {
+  const response = await API.get("/api/equipment/disposals/history");
+  return response.data;
+};
+
+export const approveDisposal = async (disposalId) => {
+  const response = await API.post(`/api/equipment/disposals/${disposalId}/approve`);
+  return response.data;
+};
+
+export const rejectDisposal = async (disposalId, reason = "") => {
+  const response = await API.post(`/api/equipment/disposals/${disposalId}/reject`, { reason });
+  return response.data;
+};
+
+export const cancelDisposal = async (disposalId) => {
+  const response = await API.post(`/api/equipment/disposals/${disposalId}/cancel`);
+  return response.data;
+};
+
+// Data-sanitisation confirmation for devices that stored patient/operational data.
+export const recordDataSanitization = async (disposalId, details = "") => {
+  const response = await API.post(`/api/equipment/disposals/${disposalId}/data-sanitization`, { details });
+  return response.data;
+};
+
+export const completeDisposal = async (disposalId) => {
+  const response = await API.post(`/api/equipment/disposals/${disposalId}/complete`);
+  return response.data;
+};
+
+// Certificate of disposal (PDF blob).
+export const downloadDisposalCertificate = async (disposalId) => {
+  const response = await API.get(`/api/equipment/disposals/${disposalId}/certificate`, {
+    responseType: "blob",
+  });
+  return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// Facility locations (issue #745)
+// ---------------------------------------------------------------------------
+
+// Nested location tree for the location picker on the add/edit forms and the list filter.
+export const getLocationTree = async () => {
+  const response = await API.get("/api/locations");
+  return response.data;
+};
+
+// Every assignment of one asset to a facility node, newest first.
+export const getEquipmentLocationHistory = async (equipmentId) => {
+  const response = await API.get(`/api/locations/equipment/${equipmentId}/history`);
+  return response.data;
+};
+
+// Moves an asset to a facility node. `effectiveDate` and `notes` are optional.
+export const assignEquipmentToLocation = async (equipmentId, { locationId, effectiveDate = null, notes = null } = {}) => {
+  const response = await API.post(`/api/locations/equipment/${equipmentId}/assign`, {
+    locationId,
+    effectiveDate,
+    notes,
+  });
+  return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// Duplicate detection (issue #746)
+// ---------------------------------------------------------------------------
+
+/**
+ * Entry-time near-match check for the registration and edit forms.
+ *
+ * Every field is optional; only the ones that have a value are sent, so a half-filled form does
+ * not query on empty strings. `excludeId` suppresses the asset's own record while editing.
+ */
+export const checkForDuplicates = async ({ name, model, serialNumber, equipmentCode, excludeId } = {}) => {
+  const query = new URLSearchParams();
+  if (name) query.set("name", name);
+  if (model) query.set("model", model);
+  if (serialNumber) query.set("serialNumber", serialNumber);
+  if (equipmentCode) query.set("equipmentCode", equipmentCode);
+  if (excludeId !== undefined && excludeId !== null) query.set("excludeId", excludeId);
+
+  const qs = query.toString();
+  const response = await API.get(
+    qs ? `/api/equipment/duplicates/check?${qs}` : "/api/equipment/duplicates/check",
+  );
+  return response.data;
+};
+
+// Likely duplicate clusters for the reconciliation view.
+export const getDuplicateGroups = async () => {
+  const response = await API.get("/api/equipment/duplicates");
+  return response.data;
+};
+
+// Confirms a reviewed pair: mergeId is archived and its history moves onto keepId.
+export const mergeDuplicates = async (keepId, mergeId) => {
+  const response = await API.post(
+    `/api/equipment/duplicates/merge?keepId=${keepId}&mergeId=${mergeId}`,
+  );
   return response.data;
 };

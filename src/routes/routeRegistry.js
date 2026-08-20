@@ -33,6 +33,11 @@ const GuidesPage = lazy(() => import("../pages/GuidesPage"));
 const SecurityPage = lazy(() => import("../pages/SecurityPage"));
 const SystemStatusPage = lazy(() => import("../pages/SystemStatusPage"));
 const DualRangeSliderStudio = lazy(() => import("../components/common/DualRangeSliderStudio"));
+const ResearchPage = lazy(() => import("../pages/ResearchPage"));
+const SupplierCentrePage = lazy(() => import("../pages/SupplierCentrePage"));
+const PrivacyPage = lazy(() => import("../pages/PrivacyPage"));
+const CookieConsentPage = lazy(() => import("../pages/CookieConsentPage"));
+const DoNotSellPage = lazy(() => import("../pages/DoNotSellPage"));
 
 const LoginPage = lazy(() => import("../pages/auth/LoginPage"));
 const RegisterPage = lazy(() => import("../pages/auth/RegisterPage"));
@@ -51,12 +56,81 @@ const RequestEquipmentPage = lazy(() => import("../pages/hospital/RequestEquipme
 const PreventiveMaintenanceRules = lazy(() => import("../pages/hospital/PreventiveMaintenanceRules"));
 const MaintenanceSlaDashboard = lazy(() => import("../pages/hospital/MaintenanceSlaDashboard"));
 const EquipmentCalibrationHub = lazy(() => import("../pages/hospital/EquipmentCalibrationHub"));
+const RetiredAssets = lazy(() => import("../pages/hospital/RetiredAssets"));
+const EquipmentLifecyclePredictor = lazy(() => import("../pages/hospital/EquipmentLifecyclePredictor"));
+const ProcurementRequestWizard = lazy(() => import("../pages/hospital/ProcurementRequestWizard"));
+const ApprovalInbox = lazy(() => import("../pages/hospital/ApprovalInbox"));
+const DynamicRiskDashboard = lazy(() => import("../pages/hospital/DynamicRiskDashboard"));
+const ProcurementLifecycleTimeline = lazy(() => import("../pages/hospital/ProcurementLifecycleTimeline"));
 
 const TaskList = lazy(() => import("../pages/technician/TaskList"));
 const UpdateTask = lazy(() => import("../pages/technician/UpdateTask"));
 
 const OrdersList = lazy(() => import("../pages/supplier/OrdersList"));
 const OrderStatus = lazy(() => import("../pages/supplier/OrderStatus"));
+const TenderBids = lazy(() => import("../pages/supplier/TenderBids"));
+
+const TenderList = lazy(() => import("../pages/hospital/TenderList"));
+const TenderCreate = lazy(() => import("../pages/hospital/TenderCreate"));
+const TenderDetail = lazy(() => import("../pages/hospital/TenderDetail"));
+
+const TelehealthHub = lazy(() => import("../pages/telehealth/TelehealthHub"));
+const SecurityComplianceHub = lazy(() => import("../pages/security/SecurityComplianceHub"));
+const ClinicalAIHub = lazy(() => import("../pages/clinical/ClinicalAIHub"));
+const BiomedicalAiGovernancePage = lazy(() => import("../pages/ai/BiomedicalAiGovernancePage"));
+const QuantumCryptoKmsVaultPage = lazy(() => import("../pages/security/QuantumCryptoKmsVaultPage"));
+const ConfidentialComputeEnclavePage = lazy(() => import("../pages/security/ConfidentialComputeEnclavePage"));
+const CtemAttackSurfaceHubPage = lazy(() => import("../pages/security/CtemAttackSurfaceHubPage"));
+const IcuVitalsTelemetryHubPage = lazy(() => import("../pages/telemetry/IcuVitalsTelemetryHubPage"));
+const RadiologyImagingHub = lazy(() => import("../pages/radiology/RadiologyImagingHub"));
+const SterileProcessingHub = lazy(() => import("../pages/sterile/SterileProcessingHub"));
+const IcuTelemetryHub = lazy(() => import("../pages/icu/IcuTelemetryHub"));
+const DialysisRenalHub = lazy(() => import("../pages/renal/DialysisRenalHub"));
+const NephrologyCrrtStationPage = lazy(() => import("../pages/renal/NephrologyCrrtStationPage"));
+const PharmacySupplyHub = lazy(() => import("../pages/pharmacy/PharmacySupplyHub"));
+const OncologyInfusionHub = lazy(() => import("../pages/oncology/OncologyInfusionHub"));
+const PrecisionOncologyMolecularHub = lazy(() => import("../pages/oncology/PrecisionOncologyMolecularHub"));
+const ColdChainCommandHub = lazy(() => import("../pages/coldchain/ColdChainCommandHub"));
+const ClinicalTrialHub = lazy(() => import("../pages/research/ClinicalTrialHub"));
+const EmergencyTriageHub = lazy(() => import("../pages/emergency/EmergencyTriageHub"));
+const EmergencyDisasterMciCommandHub = lazy(() => import("../pages/emergency/EmergencyDisasterMciCommandHub"));
+const RegulatoryAuditHub = lazy(() => import("../pages/audit/RegulatoryAuditHub"));
+const HospitalCommandOrchestrationSuitePage = lazy(() => import("../pages/command/HospitalCommandOrchestrationSuitePage"));
+const LabAutomationHub = lazy(() => import("../pages/lab/LabAutomationHub"));
+const PediatricNeonatalIcuHubPage = lazy(() => import("../pages/pediatric/PediatricNeonatalIcuHubPage"));
+const PediatricIcuHfovCommandHub = lazy(() => import("../pages/pediatric/PediatricIcuHfovCommandHub"));
+const PharmacovigilanceHub = lazy(() => import("../pages/pharmacovigilance/PharmacovigilanceHub"));
+const MedicationSupplyColdChainHubPage = lazy(() => import("../pages/supply/MedicationSupplyColdChainHubPage"));
+const SurgicalRoboticsHub = lazy(() => import("../pages/surgical/SurgicalRoboticsHub"));
+const TelehealthRemoteMonitoringHubPage = lazy(() => import("../pages/telehealth/TelehealthRemoteMonitoringHubPage"));
+const GenomicClinicalTrialsHubPage = lazy(() => import("../pages/trials/GenomicClinicalTrialsHubPage"));
+const NeonatalNicuHub = lazy(() => import("../pages/neonatal/NeonatalNicuHub"));
+const BiomedicalAiDiagnosticsOverwatchPage = lazy(() => import("../pages/ai/BiomedicalAiDiagnosticsOverwatchPage"));
+const BackendAuthenticationSecurityInfrastructurePage = lazy(() => import("../pages/auth/BackendAuthenticationSecurityInfrastructurePage"));
+const EnterpriseZeroTrustSecurityGovernancePage = lazy(() => import("../pages/auth/EnterpriseZeroTrustSecurityGovernancePage"));
+const BloodBankHub = lazy(() => import("../pages/bloodbank/BloodBankHub"));
+const BloodBankTransfusionHub = lazy(() => import("../pages/bloodbank/BloodBankTransfusionHub"));
+const CardiologyCathLabHub = lazy(() => import("../pages/cardiology/CardiologyCathLabHub"));
+const CardiovascularHemodynamicsEcmoPage = lazy(() => import("../pages/cardiology/CardiovascularHemodynamicsEcmoPage"));
+const ICUTelemetryOverwatchHubPage = lazy(() => import("../pages/hospital/ICUTelemetryOverwatchHubPage"));
+const PathologyDigitalHub = lazy(() => import("../pages/pathology/PathologyDigitalHub"));
+const PatientEhrAnalyticsPredictivePage = lazy(() => import("../pages/patient/PatientEhrAnalyticsPredictivePage"));
+const GenomicsPrecisionHub = lazy(() => import("../pages/genomics/GenomicsPrecisionHub"));
+const OphthalmologyVisionHub = lazy(() => import("../pages/ophthalmology/OphthalmologyVisionHub"));
+const RegulatoryAuditProvenanceHub = lazy(() => import("../pages/audit/RegulatoryAuditProvenanceHub"));
+const BehavioralHealthHub = lazy(() => import("../pages/behavioral/BehavioralHealthHub"));
+const DentalOralHub = lazy(() => import("../pages/dental/DentalOralHub"));
+const PatientEhrAnalyticsHub = lazy(() => import("../pages/ehr/PatientEhrAnalyticsHub"));
+const ClinicalNlpSubsystemHub = lazy(() => import("../pages/nlp/ClinicalNlpSubsystemHub"));
+const PopulationHealthHub = lazy(() => import("../pages/pophealth/PopulationHealthHub"));
+const RehabPtHub = lazy(() => import("../pages/rehab/RehabPtHub"));
+const EnterpriseSecurityHub = lazy(() => import("../pages/security/EnterpriseSecurityHub"));
+const TelehealthRemotePatientHub = lazy(() => import("../pages/telehealth/TelehealthRemotePatientHub"));
+const MaternityObgynHub = lazy(() => import("../pages/maternity/MaternityObgynHub"));
+const NutritionDieteticsHub = lazy(() => import("../pages/nutrition/NutritionDieteticsHub"));
+const DermatologyHub = lazy(() => import("../pages/dermatology/DermatologyHub"));
+const AudiologyEntHub = lazy(() => import("../pages/ent/AudiologyEntHub"));
+const UrologyHub = lazy(() => import("../pages/urology/UrologyHub"));
 
 const AuthoritySecurityPage = lazy(() => import("../pages/auth/AuthoritySecurityPage"));
 const MfaSecurityPage = lazy(() => import("../pages/auth/MfaSecurityPage"));
@@ -91,6 +165,8 @@ const SecurityPlaybookPage = lazy(() => import("../pages/auth/SecurityPlaybookPa
 const IncidentResponsePlaybookPage = lazy(() => import("../pages/auth/IncidentResponsePlaybookPage"));
 const ComplianceEvidencePage = lazy(() => import("../pages/auth/ComplianceEvidencePage"));
 const ComplianceReportingPage = lazy(() => import("../pages/auth/ComplianceReportingPage"));
+const SocOperationsConsolePage = lazy(() => import("../pages/auth/SocOperationsConsolePage"));
+
 
 /**
  * Path prefix the bundle is served under on GitHub Pages.
@@ -123,6 +199,10 @@ const HOSPITAL_ONLY = ["hospital"];
  * @property {string|string[]} access PUBLIC, AUTHENTICATED, or an array of permitted roles
  * @property {boolean}  chrome    whether the navbar and footer are shown (defaults to true)
  * @property {string}   param     name of the dynamic path segment, if the route takes one
+ * @property {string}   permission fine-grained permission code the session must hold
+ *              (see src/security/permissions.js). Enforced by AppRoutes after the
+ *              role check, so a permission revoked through the RBAC console locks
+ *              the route immediately. Optional - most routes are role-gated only.
  */
 export const ROUTES = [
   // --- public marketing and content -----------------------------------------
@@ -141,6 +221,11 @@ export const ROUTES = [
   { page: "help", slugs: ["help", "help-center"], component: HelpCenterPage, access: PUBLIC },
   { page: "awards", slugs: ["awards"], component: AwardsPage, access: PUBLIC },
   { page: "terms", slugs: ["terms"], component: TermsPage, access: PUBLIC },
+  { page: "privacy", slugs: ["privacy"], component: PrivacyPage, access: PUBLIC },
+  { page: "cookies", slugs: ["cookies", "cookie-consent"], component: CookieConsentPage, access: PUBLIC },
+  { page: "do-not-sell", slugs: ["do-not-sell"], component: DoNotSellPage, access: PUBLIC },
+  { page: "research", slugs: ["research"], component: ResearchPage, access: PUBLIC },
+  { page: "supplier-centre", slugs: ["supplier-centre"], component: SupplierCentrePage, access: PUBLIC },
   { page: "guides", slugs: ["guides"], component: GuidesPage, access: PUBLIC },
   { page: "security", slugs: ["security"], component: SecurityPage, access: PUBLIC },
   { page: "status", slugs: ["status"], component: SystemStatusPage, access: PUBLIC },
@@ -155,26 +240,115 @@ export const ROUTES = [
 
   // --- hospital ---------------------------------------------------------------
   { page: "dashboard", slugs: ["dashboard"], component: Dashboard, access: AUTHENTICATED, chrome: false },
-  { page: "equipment", slugs: ["equipment"], component: EquipmentList, access: AUTHENTICATED },
-  { page: "maintenance", slugs: ["maintenance"], component: MaintenanceSchedule, access: AUTHENTICATED },
+  { page: "equipment", slugs: ["equipment"], component: EquipmentList, access: AUTHENTICATED, permission: "READ_EQUIPMENT" },
+  { page: "maintenance", slugs: ["maintenance"], component: MaintenanceSchedule, access: AUTHENTICATED, permission: "READ_MAINTENANCE" },
   { page: "analytics", slugs: ["analytics"], component: AnalyticsDashboard, access: HOSPITAL_ONLY },
-  { page: "add-equipment", slugs: ["add-equipment"], component: AddEquipmentForm, access: HOSPITAL_ONLY },
-  { page: "edit-equipment", slugs: ["edit-equipment"], component: EditEquipmentForm, access: HOSPITAL_ONLY, param: "equipmentId" },
+  { page: "add-equipment", slugs: ["add-equipment"], component: AddEquipmentForm, access: HOSPITAL_ONLY, permission: "WRITE_EQUIPMENT" },
+  { page: "edit-equipment", slugs: ["edit-equipment"], component: EditEquipmentForm, access: HOSPITAL_ONLY, param: "equipmentId", permission: "WRITE_EQUIPMENT" },
   { page: "schedule-maintenance", slugs: ["schedule-maintenance"], component: ScheduleMaintenancePage, access: HOSPITAL_ONLY },
   { page: "request-equipment", slugs: ["request-equipment"], component: RequestEquipmentPage, access: HOSPITAL_ONLY },
+  { page: "equipment-lifecycle", slugs: ["equipment-lifecycle", "lifecycle"], component: EquipmentLifecyclePredictor, access: HOSPITAL_ONLY },
+  { page: "procurement-wizard", slugs: ["procurement-wizard"], component: ProcurementRequestWizard, access: HOSPITAL_ONLY },
+  { page: "procurement-timeline", slugs: ["procurement-timeline"], component: ProcurementLifecycleTimeline, access: HOSPITAL_ONLY, param: "requestId" },
+  { page: "risk-dashboard", slugs: ["risk-dashboard", "la-razt"], component: DynamicRiskDashboard, access: HOSPITAL_ONLY },
+  { page: "approval-inbox", slugs: ["approval-inbox"], component: ApprovalInbox, access: HOSPITAL_ONLY },
   { page: "maintenance-rules", slugs: ["maintenance-rules"], component: PreventiveMaintenanceRules, access: HOSPITAL_ONLY },
   { page: "sla-dashboard", slugs: ["sla-dashboard"], component: MaintenanceSlaDashboard, access: HOSPITAL_ONLY },
   { page: "calibration", slugs: ["calibration", "equipment-calibration"], component: EquipmentCalibrationHub, access: HOSPITAL_ONLY },
+  { page: "retired-assets", slugs: ["retired-assets", "retired"], component: RetiredAssets, access: HOSPITAL_ONLY },
+  { page: "tenders", slugs: ["tenders"], component: TenderList, access: HOSPITAL_ONLY },
+  { page: "tender-create", slugs: ["tender-create", "new-tender"], component: TenderCreate, access: HOSPITAL_ONLY },
+  { page: "tender-detail", slugs: ["tender"], component: TenderDetail, access: HOSPITAL_ONLY, param: "tenderId" },
+
+  // --- telehealth & remote patient management consoles ------------------------
+  { page: "telehealth", slugs: ["telehealth", "remote-care"], component: TelehealthHub, access: AUTHENTICATED },
+
+  // --- enterprise security & compliance consoles -------------------------------
+  //
+  // One entry per console. Each of these three used to be declared three times over - once here,
+  // once in the clinical block below and once in the "any authenticated role" block at the bottom -
+  // with a different secondary slug each time. Only the first entry was ever reachable, so
+  // /enclaves, /ctem-hub and /kms-vault all 404ed while looking registered. The alternative slugs
+  // are folded into the single surviving entry instead of being dropped, because the sidebars and
+  // the security hub already link to them.
+  { page: "security-compliance", slugs: ["security-compliance", "security-hub"], component: SecurityComplianceHub, access: AUTHENTICATED },
+  { page: "confidential-compute", slugs: ["confidential-compute", "confidential-compute-enclave", "enclaves", "secure-enclave"], component: ConfidentialComputeEnclavePage, access: AUTHENTICATED },
+  { page: "ctem", slugs: ["ctem", "ctem-attack-surface", "ctem-hub", "attack-surface"], component: CtemAttackSurfaceHubPage, access: AUTHENTICATED },
+  { page: "quantum-kms", slugs: ["quantum-kms", "quantum-crypto", "kms-vault"], component: QuantumCryptoKmsVaultPage, access: AUTHENTICATED },
+
+  // --- clinical / operational hub consoles --------------------------------------
+  { page: "icu-telemetry", slugs: ["icu-telemetry", "icu"], component: IcuTelemetryHub, access: AUTHENTICATED },
+  { page: "icu-vitals-telemetry", slugs: ["icu-vitals-telemetry", "bedside-telemetry", "icu-vitals", "vitals-telemetry"], component: IcuVitalsTelemetryHubPage, access: AUTHENTICATED },
+  { page: "clinical-ai", slugs: ["clinical-ai", "biomedical-ai"], component: ClinicalAIHub, access: AUTHENTICATED },
+  { page: "biomedical-ai-governance", slugs: ["biomedical-ai-governance", "ai-governance"], component: BiomedicalAiGovernancePage, access: AUTHENTICATED },
+
+  // --- radiology imaging & PACS console ----------------------------------------
+  { page: "radiology-imaging", slugs: ["radiology-imaging", "pacs-hub", "imaging"], component: RadiologyImagingHub, access: AUTHENTICATED },
+  { page: "pharmacy-supply", slugs: ["pharmacy-supply", "pharmacy"], component: PharmacySupplyHub, access: AUTHENTICATED },
+  { page: "oncology-infusion", slugs: ["oncology-infusion", "chemotherapy-safety"], component: OncologyInfusionHub, access: AUTHENTICATED },
+  { page: "cold-chain", slugs: ["cold-chain", "coldchain", "cryo-telemetry"], component: ColdChainCommandHub, access: AUTHENTICATED },
+  { page: "clinical-trial", slugs: ["clinical-trial", "clinical-research"], component: ClinicalTrialHub, access: AUTHENTICATED },
+  { page: "emergency-triage", slugs: ["emergency-triage", "triage-hub"], component: EmergencyTriageHub, access: AUTHENTICATED },
+  // --- medtech & specialty consoles --------------------------------------------
+  { page: "neonatal-nicu", slugs: ["neonatal-nicu", "nicu", "neonatology"], component: NeonatalNicuHub, access: AUTHENTICATED },
+  { page: "regulatory-audit", slugs: ["regulatory-audit", "audit-hub", "provenance"], component: RegulatoryAuditHub, access: AUTHENTICATED },
+  { page: "pharmacovigilance", slugs: ["pharmacovigilance", "drug-safety", "pv-hub"], component: PharmacovigilanceHub, access: AUTHENTICATED },
+  { page: "surgical-robotics", slugs: ["surgical-robotics", "or-orchestration", "robotics"], component: SurgicalRoboticsHub, access: AUTHENTICATED },
+  { page: "lab-automation", slugs: ["lab-automation", "lab-hub", "diagnostics"], component: LabAutomationHub, access: AUTHENTICATED },
+  { page: "hospital-command", slugs: ["hospital-command", "command-orchestration"], component: HospitalCommandOrchestrationSuitePage, access: AUTHENTICATED },
+  { page: "pediatric-neonatal-icu", slugs: ["pediatric-neonatal-icu", "pediatric-icu", "neonatal-icu"], component: PediatricNeonatalIcuHubPage, access: AUTHENTICATED },
+  { page: "medication-cold-chain", slugs: ["medication-cold-chain", "med-supply-chain"], component: MedicationSupplyColdChainHubPage, access: AUTHENTICATED },
+  { page: "telehealth-remote-monitoring", slugs: ["telehealth-remote-monitoring", "remote-monitoring"], component: TelehealthRemoteMonitoringHubPage, access: AUTHENTICATED },
+  { page: "genomic-clinical-trials", slugs: ["genomic-clinical-trials", "genomics"], component: GenomicClinicalTrialsHubPage, access: AUTHENTICATED },
+  { page: "biomedical-ai-diagnostics", slugs: ["biomedical-ai-diagnostics", "ai-diagnostics"], component: BiomedicalAiDiagnosticsOverwatchPage, access: AUTHENTICATED },
+  { page: "backend-auth-security", slugs: ["backend-auth-security", "auth-security-infrastructure"], component: BackendAuthenticationSecurityInfrastructurePage, access: AUTHENTICATED },
+  { page: "blood-bank", slugs: ["blood-bank", "transfusion", "bloodbank"], component: BloodBankHub, access: AUTHENTICATED },
+  { page: "blood-bank-transfusion", slugs: ["blood-bank-transfusion", "transfusion-medicine"], component: BloodBankTransfusionHub, access: AUTHENTICATED },
+  { page: "cardiology-cathlab", slugs: ["cardiology-cathlab", "cath-lab", "cardiology"], component: CardiologyCathLabHub, access: AUTHENTICATED },
+  { page: "cardiovascular-hemodynamics-ecmo", slugs: ["cardiovascular-hemodynamics-ecmo", "hemodynamics-ecmo", "ecmo-station"], component: CardiovascularHemodynamicsEcmoPage, access: AUTHENTICATED },
+  { page: "icu-telemetry-overwatch", slugs: ["icu-telemetry-overwatch", "icu-overwatch"], component: ICUTelemetryOverwatchHubPage, access: AUTHENTICATED },
+  { page: "pathology-digital", slugs: ["pathology-digital", "pathology", "digital-pathology"], component: PathologyDigitalHub, access: AUTHENTICATED },
+  { page: "patient-ehr-analytics", slugs: ["patient-ehr-analytics", "ehr-analytics"], component: PatientEhrAnalyticsPredictivePage, access: AUTHENTICATED },
+  { page: "dialysis-renal", slugs: ["dialysis-renal", "dialysis", "nephrology"], component: DialysisRenalHub, access: AUTHENTICATED },
+  { page: "nephrology-crrt-dialysis", slugs: ["nephrology-crrt-dialysis", "crrt-dialysis", "crrt-station"], component: NephrologyCrrtStationPage, access: AUTHENTICATED },
+  { page: "sterile-processing", slugs: ["sterile-processing", "cssd"], component: SterileProcessingHub, access: AUTHENTICATED },
+  { page: "genomics-precision", slugs: ["genomics-precision", "precision-medicine", "genomic-medicine"], component: GenomicsPrecisionHub, access: AUTHENTICATED },
+  { page: "emergency-disaster-mci", slugs: ["emergency-disaster-mci", "disaster-triage", "mci-command"], component: EmergencyDisasterMciCommandHub, access: AUTHENTICATED },
+
+  // --- consoles restored from the orphan set ------------------------------------
+  // Finished page components that had no entry here at all, so no URL reached them. Each is
+  // authenticated rather than role-scoped, matching every other clinical console.
+  { page: "ophthalmology-vision", slugs: ["ophthalmology-vision", "ophthalmology", "eye-unit"], component: OphthalmologyVisionHub, access: AUTHENTICATED },
+  { page: "regulatory-audit-provenance", slugs: ["regulatory-audit-provenance", "audit-provenance", "provenance-ledger"], component: RegulatoryAuditProvenanceHub, access: AUTHENTICATED },
+  { page: "behavioral-health", slugs: ["behavioral-health", "behavioral", "mental-health"], component: BehavioralHealthHub, access: AUTHENTICATED },
+  { page: "dental-oral", slugs: ["dental-oral", "dental", "oral-surgery"], component: DentalOralHub, access: AUTHENTICATED },
+  { page: "patient-ehr-analytics-hub", slugs: ["patient-ehr-analytics-hub", "ehr-hub", "ehr-analytics-hub"], component: PatientEhrAnalyticsHub, access: AUTHENTICATED },
+  { page: "clinical-nlp", slugs: ["clinical-nlp", "nlp", "nlp-subsystem"], component: ClinicalNlpSubsystemHub, access: AUTHENTICATED },
+  { page: "population-health", slugs: ["population-health", "pop-health", "care-management"], component: PopulationHealthHub, access: AUTHENTICATED },
+  { page: "rehab-pt", slugs: ["rehab-pt", "rehabilitation", "physical-therapy"], component: RehabPtHub, access: AUTHENTICATED },
+  { page: "enterprise-security-hub", slugs: ["enterprise-security-hub", "enterprise-security", "security-command"], component: EnterpriseSecurityHub, access: AUTHENTICATED },
+  { page: "telehealth-remote-patient", slugs: ["telehealth-remote-patient", "remote-patient", "telehealth-patient"], component: TelehealthRemotePatientHub, access: AUTHENTICATED },
+  { page: "maternity-obgyn", slugs: ["maternity-obgyn", "ob-gyn", "maternity", "labor-delivery"], component: MaternityObgynHub, access: AUTHENTICATED },
+  { page: "nutrition-dietetics", slugs: ["nutrition-dietetics", "nutrition", "dietetics", "clinical-nutrition"], component: NutritionDieteticsHub, access: AUTHENTICATED },
+  { page: "dermatology", slugs: ["dermatology", "derm", "skin-clinic"], component: DermatologyHub, access: AUTHENTICATED },
+  { page: "audiology-ent", slugs: ["audiology-ent", "ent", "audiology", "hearing-clinic"], component: AudiologyEntHub, access: AUTHENTICATED },
+  { page: "urology", slugs: ["urology", "urology-clinic", "stone-clinic"], component: UrologyHub, access: AUTHENTICATED },
 
   // --- technician -------------------------------------------------------------
-  { page: "tasks", slugs: ["tasks"], component: TaskList, access: AUTHENTICATED },
-  { page: "update-task", slugs: ["update-task", "updatetask"], component: UpdateTask, access: AUTHENTICATED, param: "task" },
+  { page: "tasks", slugs: ["tasks"], component: TaskList, access: AUTHENTICATED, permission: "READ_MAINTENANCE" },
+  { page: "update-task", slugs: ["update-task", "updatetask"], component: UpdateTask, access: AUTHENTICATED, param: "task", permission: "UPDATE_MAINTENANCE" },
 
   // --- supplier ---------------------------------------------------------------
-  { page: "orders", slugs: ["orders"], component: OrdersList, access: AUTHENTICATED },
-  { page: "orderstatus", slugs: ["orderstatus"], component: OrderStatus, access: AUTHENTICATED, param: "order" },
+  { page: "orders", slugs: ["orders"], component: OrdersList, access: AUTHENTICATED, permission: "READ_ORDERS" },
+  { page: "orderstatus", slugs: ["orderstatus"], component: OrderStatus, access: AUTHENTICATED, param: "order", permission: "READ_ORDERS" },
+  { page: "tender-bids", slugs: ["tender-bids", "open-tenders"], component: TenderBids, access: AUTHENTICATED },
 
   // --- security consoles: tenant-wide policy, hospital admin only -------------
+  // Two of the eleven restored consoles are tenant-wide security governance rather than clinical
+  // operations, so they are scoped to the hospital admin role like every other console in this
+  // block rather than to any signed-in user.
+  { page: "backend-auth-infrastructure", slugs: ["backend-auth-infrastructure", "auth-infrastructure"], component: BackendAuthenticationSecurityInfrastructurePage, access: HOSPITAL_ONLY },
+  { page: "zero-trust-governance", slugs: ["zero-trust-governance", "zero-trust", "zerotrust-governance"], component: EnterpriseZeroTrustSecurityGovernancePage, access: HOSPITAL_ONLY },
   { page: "authority-security", slugs: ["authority-security", "authority"], component: AuthoritySecurityPage, access: HOSPITAL_ONLY },
   { page: "sso-security", slugs: ["sso-security", "sso"], component: EnterpriseSsoPage, access: HOSPITAL_ONLY },
   { page: "rbac-security", slugs: ["rbac-security", "rbac"], component: RbacSecurityPage, access: HOSPITAL_ONLY },
@@ -210,7 +384,9 @@ export const ROUTES = [
   { page: "incident-response", slugs: ["incident-response", "ir-playbook"], component: IncidentResponsePlaybookPage, access: AUTHENTICATED },
   { page: "compliance-evidence", slugs: ["evidence", "compliance-evidence"], component: ComplianceEvidencePage, access: AUTHENTICATED },
   { page: "compliance-reporting", slugs: ["compliance-reporting", "reporting"], component: ComplianceReportingPage, access: AUTHENTICATED },
+  { page: "soc-console", slugs: ["soc-console", "soc-command-center"], component: SocOperationsConsolePage, access: AUTHENTICATED },
 ];
+
 
 /**
  * Routes carrying a dynamic path segment, e.g. `/edit-equipment/EQ-1001`.
@@ -288,6 +464,20 @@ export function buildPath(page, data) {
     return `/${slug}/${encodeURIComponent(data)}`;
   }
   return slug ? `/${slug}` : "/";
+}
+
+/**
+ * Builds a full, base-path-aware URL for a navigation target.
+ *
+ * The app is served from a sub-path on GitHub Pages (BASE_PATH, e.g.
+ * "/MedTrack_Application"), so a bare path like "/login" bypasses it and
+ * 404s. Mirror App.jsx's base-path detection so fallback navigation (plain
+ * <a href> targets and window.location redirects used when onNavigate is
+ * unavailable) lands on the real route in both dev and the deployed site.
+ */
+export function buildHref(page, data) {
+  const basePath = window.location.pathname.includes(BASE_PATH) ? BASE_PATH : "";
+  return `${basePath}${buildPath(page, data)}`;
 }
 
 /**

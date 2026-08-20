@@ -29,11 +29,14 @@ public class CspmServiceTest {
     @Mock
     private CspmSecurityFindingRepository findingRepository;
 
+    @Mock
+    private com.medtrack.auth.siem.service.SiemLogCorrelationService siemLogCorrelationService;
+
     private CspmService cspmService;
 
     @BeforeEach
     void setUp() {
-        cspmService = new CspmService(accountRepository, findingRepository);
+        cspmService = new CspmService(accountRepository, findingRepository, siemLogCorrelationService);
     }
 
     @Test

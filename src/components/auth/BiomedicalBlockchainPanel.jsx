@@ -29,12 +29,18 @@ import {
   SlidersHorizontal,
   Zap,
   Check,
-  Boxes
+  Boxes,
+  Copy,
+  Radio,
+  Share2,
+  FileSpreadsheet
 } from "lucide-react";
 import {
   getBlockchainBlocks,
   mineAuditBlock,
   verifyZkpTransaction,
+  getSmartContractRegistry,
+  exportBlockchainReportJson,
   getBlockchainStandards
 } from "../../services/BiomedicalBlockchainService";
 import "../../pages/auth/auth.css";
@@ -44,23 +50,35 @@ import "../../pages/auth/auth.css";
  * 
  * Biomedical Blockchain Audit & Cryptographic Provenance Ledger Console.
  * Features:
- * 1. Immutable Audit Blocks & Smart Contract Patient Consent
- * 2. Zero-Knowledge Proof (zk-SNARKs) Transaction Integrity Verification
- * 3. Byzantine Fault Tolerant Consensus Telemetry
- * 4. Audit Block Mining & Cross-Institutional Provenance Modal
+ * 1. Immutable Audit Blocks & Smart Contract Patient Consent Registry
+ * 2. Smart Contract Registry & Gas Usage Matrix
+ * 3. Zero-Knowledge Proof (zk-SNARKs) Transaction Integrity Verification Sandbox
+ * 4. Blockchain Audit JSON Report Inspector & Exporter
+ * 5. ISO/TC 307 & IEEE 2418.6 Standards
+ * 6. Audit Block Mining & Cross-Institutional Provenance Modal
  */
 export default function BiomedicalBlockchainPanel() {
   // State
   const [blocks, setBlocks] = useState([]);
+  const [contracts, setContracts] = useState([]);
   const [standards, setStandards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
-  const [activeTab, setActiveTab] = useState("BLOCKS"); // "BLOCKS" | "ZKP" | "STANDARDS"
+  const [activeTab, setActiveTab] = useState("BLOCKS"); // "BLOCKS" | "CONTRACTS" | "ZKP" | "JSON_REPORT" | "STANDARDS"
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedZkpFilter, setSelectedZkpFilter] = useState("ALL");
 
   // ZKP State
+  const [selectedBlockNumber, setSelectedBlockNumber] = useState(104892);
   const [txHash, setTxHash] = useState("0x7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a");
   const [zkpResult, setZkpResult] = useState(null);
+
+  // JSON Report Exporter State
+  const [exportedJson, setExportedJson] = useState("");
+  const [copiedJson, setCopiedJson] = useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -70,13 +88,20 @@ export default function BiomedicalBlockchainPanel() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [blockList, stdList] = await Promise.all([
+      const [blockList, contractList, stdList] = await Promise.all([
         getBlockchainBlocks().catch(() => []),
+        getSmartContractRegistry().catch(() => []),
         getBlockchainStandards().catch(() => [])
       ]);
 
       setBlocks(blockList);
+      setContracts(contractList);
       setStandards(stdList);
+
+      if (blockList.length > 0) {
+        const initialReport = await exportBlockchainReportJson(blockList[0].blockNumber);
+        setExportedJson(initialReport);
+      }
     } catch (err) {
       console.error("Failed to load biomedical blockchain data:", err);
       setMessage({ type: "error", text: "Failed connecting to Biomedical Blockchain service." });
@@ -89,6 +114,18 @@ export default function BiomedicalBlockchainPanel() {
     loadData();
   }, [loadData]);
 
+  // Handle Block Selection for Report Export
+  const handleExportBlockReport = async (blockNum) => {
+    try {
+      setSelectedBlockNumber(blockNum);
+      const jsonStr = await exportBlockchainReportJson(blockNum);
+      setExportedJson(jsonStr);
+      setCopiedJson(false);
+    } catch (err) {
+      console.error("Failed exporting blockchain report:", err);
+    }
+  };
+
   // Run ZKP Verification
   const handleVerifyZkp = async (e) => {
     e?.preventDefault();
@@ -98,7 +135,10 @@ export default function BiomedicalBlockchainPanel() {
     try {
       const result = await verifyZkpTransaction(txHash);
       setZkpResult(result);
-      setMessage({ type: "success", text: `Zero-Knowledge Proof verified in ${result.verificationLatencyMs}ms!` });
+      setMessage({
+        type: "success",
+        text: `Zero-Knowledge Proof verified in ${result.verificationLatencyMs}ms! Circuit: ${result.zkpProofType}. Anonymity: ENFORCED.`
+      });
     } catch (err) {
       setMessage({ type: "error", text: "ZKP verification failed." });
     } finally {
@@ -117,7 +157,7 @@ export default function BiomedicalBlockchainPanel() {
       const newBlock = await mineAuditBlock({ purpose });
 
       setIsModalOpen(false);
-      setMessage({ type: "success", text: `Audit Block #${newBlock.blockNumber} anchored to ledger!` });
+      setMessage({ type: "success", text: `Audit Block #${newBlock.blockNumber} anchored to ledger with zk-SNARK proof!` });
       await loadData();
     } catch (err) {
       setMessage({ type: "error", text: "Failed to mine audit block." });
@@ -125,6 +165,28 @@ export default function BiomedicalBlockchainPanel() {
       setActionLoading(false);
     }
   };
+
+  // Copy JSON Report to Clipboard
+  const handleCopyJson = () => {
+    navigator.clipboard.writeText(exportedJson);
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
+  };
+
+  // Filtered Blocks
+  const filteredBlocks = useMemo(() => {
+    return blocks.filter((b) => {
+      const matchesSearch =
+        b.auditPurpose.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.blockHash.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.blockNumber.toString().includes(searchQuery) ||
+        b.smartContractAddress.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesZkp = selectedZkpFilter === "ALL" || b.zkpVerificationStatus.includes(selectedZkpFilter);
+
+      return matchesSearch && matchesZkp;
+    });
+  }, [blocks, searchQuery, selectedZkpFilter]);
 
   // Metrics
   const metrics = useMemo(() => {
@@ -157,7 +219,7 @@ export default function BiomedicalBlockchainPanel() {
               Biomedical Blockchain Audit & Cryptographic Provenance Ledger
             </h2>
             <p className="text-slate-400 text-sm max-w-2xl leading-relaxed">
-              Immutable HIPAA access audit trails, zero-knowledge patient consent validation, cross-institutional data provenance, and smart contract compliance.
+              Immutable HIPAA access audit trails, zero-knowledge patient consent validation, cross-institutional data provenance, and smart contract compliance under ISO/TC 307 guidelines.
             </p>
           </div>
 
@@ -205,7 +267,7 @@ export default function BiomedicalBlockchainPanel() {
 
       {/* 2. Navigation bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveTab("BLOCKS")}
@@ -220,6 +282,18 @@ export default function BiomedicalBlockchainPanel() {
 
           <button
             type="button"
+            onClick={() => setActiveTab("CONTRACTS")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "CONTRACTS"
+                ? "bg-cyan-600 text-white font-black shadow-lg shadow-cyan-600/20"
+                : "bg-slate-800 text-slate-400 hover:text-white"
+            }`}
+          >
+            <FileSpreadsheet size={15} /> Smart Contracts ({contracts.length})
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab("ZKP")}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
               activeTab === "ZKP"
@@ -227,7 +301,19 @@ export default function BiomedicalBlockchainPanel() {
                 : "bg-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            <Terminal size={15} /> Zero-Knowledge Proof Sandbox
+            <Zap size={15} /> Zero-Knowledge Proof Sandbox
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("JSON_REPORT")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "JSON_REPORT"
+                ? "bg-cyan-600 text-white font-black shadow-lg shadow-cyan-600/20"
+                : "bg-slate-800 text-slate-400 hover:text-white"
+            }`}
+          >
+            <Code size={15} /> Blockchain Audit JSON Report
           </button>
 
           <button
@@ -255,10 +341,33 @@ export default function BiomedicalBlockchainPanel() {
       {/* 3. BLOCKS TAB */}
       {activeTab === "BLOCKS" && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
               <h3 className="text-base font-bold text-white">Anchored Audit Blocks & Smart Contracts</h3>
-              <p className="text-xs text-slate-400 font-mono">Immutable block hashes, smart contract addresses, and ZKP validation states</p>
+              <p className="text-xs text-slate-400 font-mono">Immutable block hashes, smart contract addresses, transaction counts, and ZKP validation states</p>
+            </div>
+
+            {/* Search & ZKP Filter */}
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <Search size={14} className="absolute left-3 top-3 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search block, hash, purpose..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <select
+                className="py-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
+                value={selectedZkpFilter}
+                onChange={(e) => setSelectedZkpFilter(e.target.value)}
+              >
+                <option value="ALL">All ZKP Statuses</option>
+                <option value="ZKP_SNARK_VERIFIED">ZKP VERIFIED</option>
+              </select>
             </div>
           </div>
 
@@ -275,9 +384,12 @@ export default function BiomedicalBlockchainPanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 font-mono">
-                {blocks.map((b, idx) => (
-                  <tr key={idx} className="hover:bg-slate-900/60">
-                    <td className="p-3 font-bold text-cyan-400">#{b.blockNumber}</td>
+                {filteredBlocks.map((b, idx) => (
+                  <tr key={idx} className="hover:bg-slate-900/60 transition cursor-pointer" onClick={() => handleExportBlockReport(b.blockNumber)}>
+                    <td className="p-3 font-bold text-cyan-400 flex items-center gap-1.5">
+                      <Radio size={12} className="text-cyan-500 animate-pulse" />
+                      #{b.blockNumber}
+                    </td>
                     <td className="p-3 font-sans">
                       <div className="font-semibold text-white">{b.auditPurpose}</div>
                       <div className="text-[10px] text-cyan-300 font-mono">{b.blockHash}</div>
@@ -308,13 +420,49 @@ export default function BiomedicalBlockchainPanel() {
         </div>
       )}
 
-      {/* 4. ZKP TAB */}
+      {/* 4. SMART CONTRACTS TAB */}
+      {activeTab === "CONTRACTS" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FileSpreadsheet size={18} className="text-cyan-400" /> Deployed Patient Consent Smart Contracts
+              </h3>
+              <p className="text-xs text-slate-400 font-mono">Contract addresses, Solidity compiler versions, average gas consumption, and execution status</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {contracts.map((c, idx) => (
+              <div key={idx} className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 font-sans">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded font-bold">
+                    {c.contractName}
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold">{c.executionStatus}</span>
+                </div>
+
+                <h4 className="text-sm font-bold text-white">{c.contractName}</h4>
+
+                <div className="space-y-1 font-mono text-[11px]">
+                  <div className="text-slate-400">Compiler: <strong className="text-cyan-300">{c.compilerVersion}</strong></div>
+                  <div className="text-slate-400">Avg Gas Usage: <strong className="text-white">{c.gasUsageAvg.toLocaleString()} Gas</strong></div>
+                  <div className="text-slate-400">Total Audits: <strong className="text-emerald-400">{c.auditCount} Recorded</strong></div>
+                  <div className="text-slate-500 text-[10px] break-all pt-1">Address: {c.contractAddress}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. ZKP TAB */}
       {activeTab === "ZKP" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Terminal size={18} className="text-cyan-400" /> Zero-Knowledge Proof (zk-SNARK) Verification Sandbox
+                <Zap size={18} className="text-cyan-400" /> Zero-Knowledge Proof (zk-SNARK) Verification Sandbox
               </h3>
             </div>
 
@@ -369,7 +517,36 @@ export default function BiomedicalBlockchainPanel() {
         </div>
       )}
 
-      {/* 5. STANDARDS TAB */}
+      {/* 6. BLOCKCHAIN AUDIT JSON REPORT TAB */}
+      {activeTab === "JSON_REPORT" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Code size={18} className="text-cyan-400" /> Blockchain Audit JSON Report
+              </h3>
+              <p className="text-xs text-slate-400 font-mono">Standardized ISO/TC 307 Blockchain Audit JSON schema containing block header, smart contract address, and ZKP proof</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyJson}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 border border-slate-700"
+            >
+              {copiedJson ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+              {copiedJson ? "Copied Report JSON!" : "Copy Audit Report JSON"}
+            </button>
+          </div>
+
+          <div className="relative rounded-2xl border border-slate-800 bg-slate-950 p-4 max-h-[500px] overflow-y-auto">
+            <pre className="text-xs font-mono text-cyan-300 leading-relaxed whitespace-pre-wrap">
+              {exportedJson}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* 7. STANDARDS TAB */}
       {activeTab === "STANDARDS" && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -379,7 +556,7 @@ export default function BiomedicalBlockchainPanel() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {standards.map((s, idx) => (
               <div key={idx} className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
@@ -395,7 +572,7 @@ export default function BiomedicalBlockchainPanel() {
         </div>
       )}
 
-      {/* 6. MINE MODAL */}
+      {/* 8. MINE MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full text-slate-100 space-y-4 shadow-2xl">

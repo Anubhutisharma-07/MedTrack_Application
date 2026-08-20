@@ -1,10 +1,12 @@
 package com.medtrack.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.medtrack.auth.security.EventStreamAccessGuard;
 import com.medtrack.model.OperationsEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -26,6 +28,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public class EventWebSocketHandler extends TextWebSocketHandler {
 
     private final ObjectMapper objectMapper;
+    private final EventStreamAccessGuard accessGuard;
 
     // hospitalId -> set of sessions
     private final Map<Long, CopyOnWriteArraySet<WebSocketSession>> subscriptions = new ConcurrentHashMap<>();
@@ -35,7 +38,13 @@ public class EventWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        log.debug("WebSocket connection established: {}", session.getId());
+        try {
+            Long hospitalId = accessGuard.bindAuthorizedHospital(session);
+            log.debug("Authorized event stream session {} for hospital {}", session.getId(), hospitalId);
+        } catch (AccessDeniedException ex) {
+            log.warn("Rejected unauthorized event stream session {}", session.getId());
+            session.close(CloseStatus.POLICY_VIOLATION);
+        }
     }
 
     @Override
@@ -45,17 +54,21 @@ public class EventWebSocketHandler extends TextWebSocketHandler {
             SubscriptionMessage msg = objectMapper.readValue(payload, SubscriptionMessage.class);
 
             if ("subscribe".equals(msg.getAction())) {
-                Long hospitalId = msg.getHospitalId();
-                if (hospitalId != null) {
-                    subscribe(session, hospitalId);
-                    sendMessage(session, Map.of("type", "subscribed", "hospitalId", hospitalId));
-                }
+                Long hospitalId = accessGuard.requireAuthorizedHospital(session, msg.getHospitalId());
+                subscribe(session, hospitalId);
+                sendMessage(session, Map.of("type", "subscribed", "hospitalId", hospitalId));
             } else if ("unsubscribe".equals(msg.getAction())) {
                 Long hospitalId = sessionHospital.get(session);
                 if (hospitalId != null) {
                     unsubscribe(session, hospitalId);
                 }
+            } else {
+                sendMessage(session, Map.of("type", "error", "message", "Unsupported action"));
             }
+        } catch (AccessDeniedException ex) {
+            log.warn("Rejected event stream subscription for session {}", session.getId());
+            sendMessage(session, Map.of("type", "error", "message", "Access denied"));
+            session.close(CloseStatus.POLICY_VIOLATION);
         } catch (Exception e) {
             log.warn("Error handling WebSocket message: {}", e.getMessage());
             sendMessage(session, Map.of("type", "error", "message", "Invalid message format"));
@@ -64,7 +77,7 @@ public class EventWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
-        Long hospitalId = sessionHospital.remove(session);
+        Long hospitalId = sessionHospital.get(session);
         if (hospitalId != null) {
             unsubscribe(session, hospitalId);
         }
@@ -72,12 +85,21 @@ public class EventWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void subscribe(WebSocketSession session, Long hospitalId) {
-        sessionHospital.put(session, hospitalId);
+        Long previousHospitalId = sessionHospital.put(session, hospitalId);
+        if (previousHospitalId != null && !previousHospitalId.equals(hospitalId)) {
+            removeFromHospital(session, previousHospitalId);
+        }
         subscriptions.computeIfAbsent(hospitalId, k -> new CopyOnWriteArraySet<>()).add(session);
         log.debug("Session {} subscribed to hospital {}", session.getId(), hospitalId);
     }
 
     private void unsubscribe(WebSocketSession session, Long hospitalId) {
+        sessionHospital.remove(session, hospitalId);
+        removeFromHospital(session, hospitalId);
+        log.debug("Session {} unsubscribed from hospital {}", session.getId(), hospitalId);
+    }
+
+    private void removeFromHospital(WebSocketSession session, Long hospitalId) {
         CopyOnWriteArraySet<WebSocketSession> sessions = subscriptions.get(hospitalId);
         if (sessions != null) {
             sessions.remove(session);
@@ -85,7 +107,6 @@ public class EventWebSocketHandler extends TextWebSocketHandler {
                 subscriptions.remove(hospitalId);
             }
         }
-        log.debug("Session {} unsubscribed from hospital {}", session.getId(), hospitalId);
     }
 
     /**
@@ -105,15 +126,15 @@ public class EventWebSocketHandler extends TextWebSocketHandler {
             TextMessage message = new TextMessage(json);
 
             for (WebSocketSession session : sessions) {
-                if (session.isOpen()) {
-                    try {
-                        session.sendMessage(message);
-                    } catch (IOException e) {
-                        log.debug("Failed to send to session {}: {}", session.getId(), e.getMessage());
-                        // Remove dead session
-                        sessions.remove(session);
-                        sessionHospital.remove(session);
-                    }
+                if (!session.isOpen()) {
+                    unsubscribe(session, hospitalId);
+                    continue;
+                }
+                try {
+                    session.sendMessage(message);
+                } catch (IOException e) {
+                    log.debug("Failed to send to session {}: {}", session.getId(), e.getMessage());
+                    unsubscribe(session, hospitalId);
                 }
             }
         } catch (Exception e) {

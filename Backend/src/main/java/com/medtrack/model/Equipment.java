@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 @Table(name = "equipment")
 // Hibernate 7 removed @Where; @SQLRestriction is its replacement and carries the same semantics.
 @SQLRestriction("deleted = false")
+@EntityListeners(com.medtrack.listener.EquipmentStatusAuditListener.class)
 @Data
 @Builder
 @NoArgsConstructor
@@ -244,6 +245,29 @@ public class Equipment {
     @Column(name = "location_effective_date")
     private LocalDate locationEffectiveDate;
 
+    // ---------------------------------------------------------------------
+    // Structured facility location (issue #745)
+    //
+    // The room/ward free-text fields above predate the location tree and are kept for
+    // back-compat. location is the asset's current node in facility_location; the tree's flat
+    // list carries name, type and parentId so the UI can render a breadcrumb without joins.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Current facility-location node for this asset.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "location_id")
+    private FacilityLocation location;
+
+    /**
+     * Read-only projection of the {@code location_id} column. Automatically populated on read
+     * and bound from JSON on write, but never written by Hibernate - the relationship above is
+     * the single write path, so a raw id cannot bypass hospital-scoping or breadcrumb integrity.
+     */
+    @Column(name = "location_id", insertable = false, updatable = false)
+    private Long locationId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "replacement_equipment_id")
     private Equipment replacementEquipment;
@@ -267,4 +291,14 @@ public class Equipment {
 
     @Column(name = "deleted_by", length = 255)
     private String deletedBy;
+
+    @jakarta.persistence.Transient
+    private EquipmentStatus originalStatus;
+
+    @jakarta.persistence.PostLoad
+    @jakarta.persistence.PostPersist
+    @jakarta.persistence.PostUpdate
+    public void captureOriginalStatus() {
+        this.originalStatus = this.status;
+    }
 }
