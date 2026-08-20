@@ -1,7 +1,6 @@
 package com.medtrack.service;
 
-import com.medtrack.auth.model.User;
-import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.auth.security.HospitalAccessGuard;
 import com.medtrack.dto.EquipmentDepreciationSummaryResponse;
 import com.medtrack.dto.EquipmentLifecycleActionRequest;
 import com.medtrack.dto.EquipmentLifecycleActionResponse;
@@ -35,7 +34,7 @@ public class EquipmentLifecycleService {
     private final EquipmentLifecycleActionRepository lifecycleRepository;
     private final EquipmentRepository equipmentRepository;
     private final HospitalRepository hospitalRepository;
-    private final UserRepository userRepository;
+    private final HospitalAccessGuard hospitalAccessGuard;
 
     @Transactional
     public EquipmentLifecycleActionResponse createAction(Long equipmentId,
@@ -262,10 +261,7 @@ public class EquipmentLifecycleService {
     }
 
     private Hospital getHospitalForUser(String username) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
-        return hospitalRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found for user"));
+        return hospitalAccessGuard.resolveHospitalFromEmail(username);
     }
 
     private String trimToNull(String value) {

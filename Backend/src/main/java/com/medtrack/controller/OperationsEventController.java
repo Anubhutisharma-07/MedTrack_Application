@@ -1,11 +1,16 @@
 package com.medtrack.controller;
 
+import com.medtrack.auth.model.User;
+import com.medtrack.auth.repository.UserRepository;
 import com.medtrack.dto.EventReadRequest;
 import com.medtrack.dto.OperationsEventResponse;
 import com.medtrack.dto.UnreadCountResponse;
+import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.EventReadReceipt;
+import com.medtrack.model.Hospital;
 import com.medtrack.model.OperationsEvent;
 import com.medtrack.repository.EventReadReceiptRepository;
+import com.medtrack.repository.HospitalRepository;
 import com.medtrack.repository.OperationsEventRepository;
 import com.medtrack.service.EventPublisherService;
 import jakarta.validation.Valid;
@@ -16,6 +21,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,11 +41,14 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/events")
 @RequiredArgsConstructor
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class OperationsEventController {
 
     private final OperationsEventRepository eventRepository;
     private final EventReadReceiptRepository readReceiptRepository;
     private final EventPublisherService eventPublisherService;
+    private final UserRepository userRepository;
+    private final HospitalRepository hospitalRepository;
 
     /**
      * Get paginated event history for the user's hospital.
@@ -117,7 +126,7 @@ public class OperationsEventController {
      * Mark events as read.
      */
     @PostMapping("/read")
-    public ResponseEntity<Void> markAsRead(@Valid @RequestBody EventReadRequest request, Authentication authentication) {
+    public ResponseEntity<Map<String, String>> markAsRead(@Valid @RequestBody EventReadRequest request, Authentication authentication) {
         Long userId = getUserId(authentication);
         Long hospitalId = getHospitalId(authentication);
 
@@ -125,7 +134,7 @@ public class OperationsEventController {
         List<OperationsEvent> events = eventRepository.findAllById(request.getEventIds());
         for (OperationsEvent event : events) {
             if (!event.getHospitalId().equals(hospitalId)) {
-                return ResponseEntity.badRequest().build();
+                return ResponseEntity.badRequest().body(Map.of("message", "Some events do not belong to your hospital"));
             }
         }
 
@@ -138,14 +147,14 @@ public class OperationsEventController {
                 .collect(Collectors.toList());
         readReceiptRepository.saveAll(receipts);
 
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(Map.of("message", "Events marked as read"));
     }
 
     /**
      * Mark all events as read (up to a limit).
      */
     @PostMapping("/read-all")
-    public ResponseEntity<Void> markAllAsRead(@RequestParam(defaultValue = "100") int limit, Authentication authentication) {
+    public ResponseEntity<Map<String, String>> markAllAsRead(@RequestParam(defaultValue = "100") int limit, Authentication authentication) {
         Long userId = getUserId(authentication);
         Long hospitalId = getHospitalId(authentication);
 
@@ -161,7 +170,7 @@ public class OperationsEventController {
                 .collect(Collectors.toList());
         readReceiptRepository.saveAll(receipts);
 
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(Map.of("message", "All events marked as read"));
     }
 
     private OperationsEventResponse toResponse(OperationsEvent event) {
@@ -182,13 +191,16 @@ public class OperationsEventController {
     }
 
     private Long getHospitalId(Authentication authentication) {
-        // In a real implementation, this would come from the user's hospital context
-        // For now, extracting from principal or using a service
-        return 1L; // Placeholder - should use HospitalAccessGuard or similar
+        User user = userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Hospital hospital = hospitalRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found for user"));
+        return hospital.getId();
     }
 
     private Long getUserId(Authentication authentication) {
-        // Extract user ID from authentication
-        return 1L; // Placeholder
+        return userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"))
+                .getId();
     }
 }
