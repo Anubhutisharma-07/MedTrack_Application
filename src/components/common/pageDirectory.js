@@ -146,6 +146,7 @@ export const PAGE_LABELS = {
   "sterile-processing": { label: "Sterile Processing (CSSD)", keywords: "cssd sterile autoclave tray instrument decontamination bowie dick" },
   "cold-chain": { label: "Cold Chain Command", keywords: "cold chain freezer excursion temperature vaccine cryo dscsa" },
   "medication-cold-chain": { label: "Medication Supply & Cold Chain", keywords: "medication supply cold chain distribution shipment pedigree" },
+  "medical-gas-plant": { label: "Medical Gas & Utilities Plant", keywords: "medical gas oxygen vie manifold pipeline avsu zone valve vacuum agss compressor htm nfpa piped" },
   "pharmacy-supply": { label: "Pharmacy & Med-Supply Chain", keywords: "pharmacy dispensing stock shortage formulary supply" },
   "pharmacovigilance": { label: "Pharmacovigilance & Drug Safety", keywords: "adverse event drug safety signal meddra pharmacovigilance recall" },
 
@@ -225,6 +226,7 @@ export const CONSOLE_GROUPS = [
       "medication-cold-chain",
       "pharmacy-supply",
       "pharmacovigilance",
+      "medical-gas-plant",
     ],
   },
   {

@@ -101,6 +101,7 @@ const PediatricNeonatalIcuHubPage = lazy(() => import("../pages/pediatric/Pediat
 const PediatricIcuHfovCommandHub = lazy(() => import("../pages/pediatric/PediatricIcuHfovCommandHub"));
 const PharmacovigilanceHub = lazy(() => import("../pages/pharmacovigilance/PharmacovigilanceHub"));
 const MedicationSupplyColdChainHubPage = lazy(() => import("../pages/supply/MedicationSupplyColdChainHubPage"));
+const MedicalGasPlantHub = lazy(() => import("../pages/facilities/MedicalGasPlantHub"));
 const SurgicalRoboticsHub = lazy(() => import("../pages/surgical/SurgicalRoboticsHub"));
 const TelehealthRemoteMonitoringHubPage = lazy(() => import("../pages/telehealth/TelehealthRemoteMonitoringHubPage"));
 const GenomicClinicalTrialsHubPage = lazy(() => import("../pages/trials/GenomicClinicalTrialsHubPage"));
@@ -290,6 +291,7 @@ export const ROUTES = [
   { page: "pharmacy-supply", slugs: ["pharmacy-supply", "pharmacy"], component: PharmacySupplyHub, access: AUTHENTICATED },
   { page: "oncology-infusion", slugs: ["oncology-infusion", "chemotherapy-safety"], component: OncologyInfusionHub, access: AUTHENTICATED },
   { page: "cold-chain", slugs: ["cold-chain", "coldchain", "cryo-telemetry"], component: ColdChainCommandHub, access: AUTHENTICATED },
+  { page: "medical-gas-plant", slugs: ["medical-gas-plant", "medical-gas", "gas-plant"], component: MedicalGasPlantHub, access: AUTHENTICATED },
   { page: "clinical-trial", slugs: ["clinical-trial", "clinical-research"], component: ClinicalTrialHub, access: AUTHENTICATED },
   { page: "emergency-triage", slugs: ["emergency-triage", "triage-hub"], component: EmergencyTriageHub, access: AUTHENTICATED },
   // --- medtech & specialty consoles --------------------------------------------
