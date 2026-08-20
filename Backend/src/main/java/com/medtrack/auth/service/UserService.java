@@ -401,12 +401,12 @@ public class UserService {
 
         // Reject if not verified
         if (!token.isVerified()) {
-            throw new RuntimeException("OTP has not been verified");
+            throw new com.medtrack.exception.InvalidStatusTransitionException("OTP has not been verified");
         }
 
         // Get user and update password
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+                .orElseThrow(() -> new com.medtrack.exception.ResourceNotFoundException("User not found with email: " + email));
 
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
@@ -437,7 +437,7 @@ public class UserService {
     private PasswordResetToken resolveActiveTokenForAttempt(String email, String otp) {
         PasswordResetToken token = passwordResetTokenRepository
                 .findFirstByEmailAndUsedFalseOrderByCreatedAtDesc(email)
-                .orElseThrow(() -> new RuntimeException("Incorrect OTP"));
+                .orElseThrow(() -> new com.medtrack.exception.InvalidStatusTransitionException("Incorrect OTP or no active reset session found"));
 
         if (token.getExpiryTime().isBefore(LocalDateTime.now())) {
             throw new LockedException("OTP has expired");
@@ -453,7 +453,7 @@ public class UserService {
         if (!token.getOtp().equals(otp)) {
             token.setAttemptCount(token.getAttemptCount() + 1);
             passwordResetTokenRepository.save(token);
-            throw new RuntimeException("Incorrect OTP");
+            throw new com.medtrack.exception.InvalidStatusTransitionException("Incorrect OTP");
         }
 
         return token;

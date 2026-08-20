@@ -4,16 +4,19 @@ import com.medtrack.model.Hospital;
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
 import com.medtrack.repository.HospitalRepository;
+import com.medtrack.exception.InvalidStatusTransitionException;
 import com.medtrack.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
-import com.medtrack.repository.HospitalRepository;
-import com.medtrack.exception.ResourceNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class HospitalService {
+
+    private static final Logger logger = LoggerFactory.getLogger(HospitalService.class);
 
     private final HospitalRepository hospitalRepository;
     private final UserRepository userRepository;
@@ -29,16 +32,16 @@ public class HospitalService {
     public Hospital createHospitalProfile(Hospital hospital, String userEmail) {
 
         User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User not found with email: " + userEmail));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userEmail));
 
         // Ensure user is actually a hospital role
         if (!"hospital".equalsIgnoreCase(user.getRole())) {
-            throw new RuntimeException("Only users with role 'hospital' can create a hospital profile.");
+            throw new InvalidStatusTransitionException("Only users with role 'hospital' can create a hospital profile.");
         }
 
         // Check if hospital profile already exists for this user
         if (hospitalRepository.findByUserId(user.getId()).isPresent()) {
-            throw new RuntimeException("A hospital profile already exists for this user.");
+            throw new InvalidStatusTransitionException("A hospital profile already exists for this user.");
         }
 
         hospital.setUser(user);

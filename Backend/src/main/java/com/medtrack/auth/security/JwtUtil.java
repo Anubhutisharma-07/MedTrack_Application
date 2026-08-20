@@ -113,7 +113,7 @@ public class JwtUtil {
      * Helper to extract the custom 'authorityVersion' claim from the JWT claims payload.
      *
      * @param token the JWT string to parse
-     * @return the authority version stored in the token claims, or 1L if absent
+     * @return the authority version stored in the token claims, or null if absent
      */
     public Long extractAuthorityVersion(String token) {
         return extractClaim(token, claims -> {
@@ -121,7 +121,7 @@ public class JwtUtil {
             if (val instanceof Number) {
                 return ((Number) val).longValue();
             }
-            return 1L;
+            return null;
         });
     }
 
