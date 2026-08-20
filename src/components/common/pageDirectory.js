@@ -137,6 +137,7 @@ export const PAGE_LABELS = {
   "surgical-robotics": { label: "Surgical Robotics & OR", keywords: "operating theatre robot surgery or turnover instrument" },
   "oncology-infusion": { label: "Oncology Infusion", keywords: "chemotherapy infusion vesicant cytotoxic dose chair oncology" },
   "dialysis-renal": { label: "Dialysis & Renal Replacement", keywords: "dialysis renal haemodialysis ktv water loop crrt nephrology" },
+  "transplant-procurement": { label: "Transplant & Organ Procurement", keywords: "transplant organ donor recipient ischaemia perfusion hla mismatch crossmatch dsa kidney liver heart lung dcd dbd" },
   "blood-bank": { label: "Blood Bank", keywords: "blood bank haemovigilance donor unit inventory group" },
   "blood-bank-transfusion": { label: "Transfusion Medicine", keywords: "transfusion crossmatch blood product reaction abo compatibility" },
   "telehealth": { label: "Telehealth", keywords: "telehealth virtual consult video remote appointment" },
@@ -214,6 +215,7 @@ export const CONSOLE_GROUPS = [
       "blood-bank-transfusion",
       "telehealth",
       "telehealth-remote-monitoring",
+      "transplant-procurement",
     ],
   },
   {
