@@ -169,6 +169,7 @@ const ComplianceEvidencePage = lazy(() => import("../pages/auth/ComplianceEviden
 const ComplianceReportingPage = lazy(() => import("../pages/auth/ComplianceReportingPage"));
 const SocOperationsConsolePage = lazy(() => import("../pages/auth/SocOperationsConsolePage"));
 const EndocrinologyMetabolicHub = lazy(() => import("../pages/endocrinology/EndocrinologyMetabolicHub"));
+const TransplantMedicineHub = lazy(() => import("../pages/transplant/TransplantMedicineHub"));
 
 
 /**
@@ -339,6 +340,7 @@ export const ROUTES = [
   { page: "audiology-ent", slugs: ["audiology-ent", "ent", "audiology", "hearing-clinic"], component: AudiologyEntHub, access: AUTHENTICATED },
   { page: "endocrinology-metabolic", slugs: ["endocrinology-metabolic", "endo-metabolic", "diabetes-thyroid"], component: EndocrinologyMetabolicHub, access: AUTHENTICATED },
   { page: "urology", slugs: ["urology", "urology-clinic", "stone-clinic"], component: UrologyHub, access: AUTHENTICATED },
+  { page: "transplant-medicine", slugs: ["transplant-medicine", "transplant", "transplant-hub"], component: TransplantMedicineHub, access: AUTHENTICATED },
 
   // --- technician -------------------------------------------------------------
   { page: "tasks", slugs: ["tasks"], component: TaskList, access: AUTHENTICATED, permission: "READ_MAINTENANCE" },
