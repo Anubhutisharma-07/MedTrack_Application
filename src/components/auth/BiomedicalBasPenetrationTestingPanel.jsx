@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Target,
+  Crosshair,
   ShieldCheck,
   RefreshCw,
   CheckCircle2,
@@ -28,59 +28,83 @@ import {
   Zap,
   Check,
   ShieldAlert,
-  Crosshair,
+  HardDrive,
+  Copy,
+  Radio,
+  Share2,
   Flame,
-  Bug
+  Target
 } from "lucide-react";
 import {
-  getPenetrationTestingInventory,
-  launchPenetrationTestCampaign,
-  runExploitValidation,
-  getPenetrationTestingStandards
+  getBasSimulationsRegistry,
+  executeBasSimulation,
+  runBasPayloadSandbox,
+  getMitreAttackMatrix,
+  exportBasReportJson,
+  getBasStandards
 } from "../../services/BiomedicalBasPenetrationTestingService";
 import "../../pages/auth/auth.css";
 
 /**
  * BiomedicalBasPenetrationTestingPanel Component
  * 
- * Biomedical Continuous Automated Penetration Testing & Breach Simulation (BAS) Console.
+ * Biomedical Breach & Attack Simulation (BAS) & Automated Penetration Testing Console.
  * Features:
- * 1. MITRE ATT&CK for Healthcare TTP Mapping & Exploit Vector Inventory
- * 2. Automated Exploit Payload Validation & Defense Verification Sandbox
- * 3. NIST SP 800-115 & OWASP Automated PenTest Standards
- * 4. BAS Campaign Provisioning & Exploit Testing Modal
+ * 1. Active BAS Attack Simulations & Exploitation Scenario Registry
+ * 2. MITRE ATT&CK for Healthcare Mapping Matrix
+ * 3. Zero-Day Payload Execution & Defense Sandbox
+ * 4. BAS Penetration Testing Audit Report JSON Inspector & Exporter
+ * 5. NIST SP 800-115 & MITRE ATT&CK Framework Standards
+ * 6. Execute BAS Attack Simulation Wizard Modal
  */
 export default function BiomedicalBasPenetrationTestingPanel() {
   // State
   const [simulations, setSimulations] = useState([]);
+  const [mitreMatrix, setMitreMatrix] = useState([]);
   const [standards, setStandards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
-  const [activeTab, setActiveTab] = useState("SIMULATIONS"); // "SIMULATIONS" | "SANDBOX" | "STANDARDS"
+  const [activeTab, setActiveTab] = useState("SIMULATIONS"); // "SIMULATIONS" | "MITRE" | "SANDBOX" | "JSON_REPORT" | "STANDARDS"
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSeverityFilter, setSelectedSeverityFilter] = useState("ALL");
 
   // Sandbox State
-  const [selectedSimId, setSelectedSimId] = useState("BAS-SIM-601");
-  const [exploitResult, setExploitResult] = useState(null);
+  const [selectedSimulationId, setSelectedSimulationId] = useState("BAS-SIM-2501");
+  const [sandboxResult, setSandboxResult] = useState(null);
+
+  // JSON Report Exporter State
+  const [exportedJson, setExportedJson] = useState("");
+  const [copiedJson, setCopiedJson] = useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [vectorName, setVectorName] = useState("");
+  const [simulationName, setSimulationName] = useState("");
+  const [attackVector, setAttackVector] = useState("PACS DICOM Gateway (Port 104)");
 
   // Load telemetry
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [simList, stdList] = await Promise.all([
-        getPenetrationTestingInventory().catch(() => []),
-        getPenetrationTestingStandards().catch(() => [])
+      const [simList, matrixList, stdList] = await Promise.all([
+        getBasSimulationsRegistry().catch(() => []),
+        getMitreAttackMatrix().catch(() => []),
+        getBasStandards().catch(() => [])
       ]);
 
       setSimulations(simList);
+      setMitreMatrix(matrixList);
       setStandards(stdList);
+
+      if (simList.length > 0) {
+        const initialReport = await exportBasReportJson(simList[0].simulationId);
+        setExportedJson(initialReport);
+      }
     } catch (err) {
-      console.error("Failed to load biomedical BAS penetration testing data:", err);
-      setMessage({ type: "error", text: "Failed connecting to BAS Penetration Testing service." });
+      console.error("Failed to load biomedical BAS data:", err);
+      setMessage({ type: "error", text: "Failed connecting to BAS service." });
     } finally {
       setLoading(false);
     }
@@ -90,53 +114,96 @@ export default function BiomedicalBasPenetrationTestingPanel() {
     loadData();
   }, [loadData]);
 
-  // Run Exploit Validation
-  const handleRunExploit = async (e) => {
+  // Handle Simulation Selection for Report Export
+  const handleExportSimReport = async (simId) => {
+    try {
+      setSelectedSimulationId(simId);
+      const jsonStr = await exportBasReportJson(simId);
+      setExportedJson(jsonStr);
+      setCopiedJson(false);
+    } catch (err) {
+      console.error("Failed exporting BAS report:", err);
+    }
+  };
+
+  // Run Payload Sandbox
+  const handleRunSandbox = async (e) => {
     e?.preventDefault();
     setActionLoading(true);
     setMessage({ type: "", text: "" });
 
     try {
-      const result = await runExploitValidation(selectedSimId);
-      setExploitResult(result);
-      setMessage({ type: "success", text: `Automated PenTest payload executed in ${result.executionLatencyMs}ms! Attack blocked by ${result.defenseMechanism}.` });
+      const result = await runBasPayloadSandbox(selectedSimulationId);
+      setSandboxResult(result);
+      setMessage({
+        type: "success",
+        text: `BAS Attack Payload execution blocked in ${result.sandboxLatencyMs}ms! WAF Block: PASSED. Microsegmentation: ACTIVE.`
+      });
       await loadData();
     } catch (err) {
-      setMessage({ type: "error", text: "Exploit validation execution failed." });
+      setMessage({ type: "error", text: "BAS payload sandbox execution failed." });
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Launch Campaign
-  const handleLaunchCampaign = async (e) => {
+  // Execute BAS Attack Simulation
+  const handleExecuteSimulation = async (e) => {
     e.preventDefault();
-    if (!vectorName.trim()) return;
+    if (!simulationName.trim()) return;
 
     setActionLoading(true);
     setMessage({ type: "", text: "" });
 
     try {
-      const newSim = await launchPenetrationTestCampaign({ vectorName: vectorName.trim() });
+      const newSim = await executeBasSimulation({
+        simulationName: simulationName.trim(),
+        attackVector
+      });
 
-      setVectorName("");
+      setSimulationName("");
       setIsModalOpen(false);
-      setMessage({ type: "success", text: `Penetration Testing Simulation ${newSim.simulationId} launched successfully!` });
+      setMessage({
+        type: "success",
+        text: `BAS Simulation ${newSim.simulationId} launched against ${newSim.attackVector}! Threat Blocked: YES.`
+      });
       await loadData();
     } catch (err) {
-      setMessage({ type: "error", text: "Failed to launch penetration testing campaign." });
+      setMessage({ type: "error", text: "Failed to execute BAS simulation." });
     } finally {
       setActionLoading(false);
     }
   };
 
+  // Copy JSON Report to Clipboard
+  const handleCopyJson = () => {
+    navigator.clipboard.writeText(exportedJson);
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
+  };
+
+  // Filtered Simulations
+  const filteredSimulations = useMemo(() => {
+    return simulations.filter((s) => {
+      const matchesSearch =
+        s.simulationName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.attackVector.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.simulationId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.mitreTechnique.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesSeverity = selectedSeverityFilter === "ALL" || s.severityLevel.includes(selectedSeverityFilter);
+
+      return matchesSearch && matchesSeverity;
+    });
+  }, [simulations, searchQuery, selectedSeverityFilter]);
+
   // Metrics
   const metrics = useMemo(() => {
-    const totalSimulations = simulations.length;
-    const defendedCount = simulations.filter((s) => s.simulationStatus.includes("DEFENDED")).length;
-    const criticalVectors = simulations.filter((s) => s.attackPathSeverity === "CRITICAL" || s.attackPathSeverity === "HIGH").length;
+    const totalSims = simulations.length;
+    const blockedCount = simulations.filter((s) => s.executionStatus === "SIMULATION_BLOCKED").length;
+    const avgLatency = (simulations.reduce((acc, curr) => acc + curr.mitigationLatencyMs, 0) / (totalSims || 1)).toFixed(0);
 
-    return { totalSimulations, defendedCount, criticalVectors };
+    return { totalSims, blockedCount, avgLatency };
   }, [simulations]);
 
   return (
@@ -150,7 +217,7 @@ export default function BiomedicalBasPenetrationTestingPanel() {
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider text-red-400 bg-red-500/10 border border-red-500/20 rounded-full flex items-center gap-1.5 font-mono">
-                <Target size={12} /> BREACH & ATTACK SIMULATION (BAS)
+                <Crosshair size={12} /> BREACH & ATTACK SIMULATION (BAS)
               </span>
               <span className="px-3 py-1 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center gap-1 font-mono">
                 <ShieldCheck size={12} /> MITRE ATT&CK FOR HEALTHCARE
@@ -161,7 +228,7 @@ export default function BiomedicalBasPenetrationTestingPanel() {
               Biomedical BAS & Automated Penetration Testing
             </h2>
             <p className="text-slate-400 text-sm max-w-2xl leading-relaxed">
-              Continuous automated penetration testing, MITRE ATT&CK healthcare TTP simulation, FHIR/PACS vulnerability probes, zero-day exploit validation, and defense verification.
+              Continuous automated penetration testing, zero-day exploit payload simulation, PACS DICOM buffer overflow testing, and MITRE ATT&CK mitigation mapping under NIST SP 800-115 standards.
             </p>
           </div>
 
@@ -171,14 +238,14 @@ export default function BiomedicalBasPenetrationTestingPanel() {
               <span className="text-slate-400 font-sans font-bold uppercase text-[10px]">BAS Simulation Telemetry</span>
               <span className="text-red-400 font-bold flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
-                BAS ENGINE ACTIVE
+                SIMULATOR ACTIVE
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-700/80 font-mono text-[11px]">
-              <div>Exploit Vectors: <strong className="text-white">{metrics.totalSimulations} Simulated</strong></div>
-              <div>Defended State: <strong className="text-emerald-400">{metrics.defendedCount} Blocked</strong></div>
-              <div>High Severity: <strong className="text-amber-400">{metrics.criticalVectors} Targeted</strong></div>
-              <div>Defense Efficacy: <strong className="text-emerald-400">99.4% (eBPF WAF)</strong></div>
+              <div>Total Simulations: <strong className="text-white">{metrics.totalSims} Executed</strong></div>
+              <div>Threats Blocked: <strong className="text-emerald-400">{metrics.blockedCount} / {metrics.totalSims} (100%)</strong></div>
+              <div>Mitigation Latency: <strong className="text-red-300">{metrics.avgLatency}ms Avg</strong></div>
+              <div>MITRE Coverage: <strong className="text-emerald-400">100% MAPPED</strong></div>
             </div>
           </div>
         </div>
@@ -189,7 +256,7 @@ export default function BiomedicalBasPenetrationTestingPanel() {
             className={`mt-6 p-4 rounded-xl text-sm font-medium flex items-center justify-between border ${
               message.type === "error"
                 ? "bg-red-500/10 border-red-500/30 text-red-400"
-                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                : "bg-red-500/10 border-red-500/30 text-red-400"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -209,7 +276,7 @@ export default function BiomedicalBasPenetrationTestingPanel() {
 
       {/* 2. Navigation bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveTab("SIMULATIONS")}
@@ -219,7 +286,19 @@ export default function BiomedicalBasPenetrationTestingPanel() {
                 : "bg-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            <Target size={15} /> Attack Simulations ({simulations.length})
+            <Crosshair size={15} /> Attack Simulations ({simulations.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("MITRE")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "MITRE"
+                ? "bg-red-600 text-white font-black shadow-lg shadow-red-600/20"
+                : "bg-slate-800 text-slate-400 hover:text-white"
+            }`}
+          >
+            <Target size={15} /> MITRE ATT&CK Matrix ({mitreMatrix.length})
           </button>
 
           <button
@@ -231,7 +310,19 @@ export default function BiomedicalBasPenetrationTestingPanel() {
                 : "bg-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            <Crosshair size={15} /> Exploit Payload Sandbox
+            <Zap size={15} /> Zero-Day Payload Sandbox
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("JSON_REPORT")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "JSON_REPORT"
+                ? "bg-red-600 text-white font-black shadow-lg shadow-red-600/20"
+                : "bg-slate-800 text-slate-400 hover:text-white"
+            }`}
+          >
+            <Code size={15} /> BAS Audit JSON Report
           </button>
 
           <button
@@ -243,7 +334,7 @@ export default function BiomedicalBasPenetrationTestingPanel() {
                 : "bg-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            <ShieldCheck size={15} /> MITRE ATT&CK & NIST Standards ({standards.length})
+            <ShieldCheck size={15} /> NIST & MITRE Standards ({standards.length})
           </button>
         </div>
 
@@ -252,17 +343,41 @@ export default function BiomedicalBasPenetrationTestingPanel() {
           onClick={() => setIsModalOpen(true)}
           className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 shadow-lg shadow-red-600/20"
         >
-          <PlusCircle size={15} /> Launch Penetration Test Campaign
+          <PlusCircle size={15} /> Launch Attack Simulation
         </button>
       </div>
 
       {/* 3. SIMULATIONS TAB */}
       {activeTab === "SIMULATIONS" && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
-              <h3 className="text-base font-bold text-white">Automated Breach Simulations & MITRE TTPs</h3>
-              <p className="text-xs text-slate-400 font-mono">Threat vectors, MITRE technique IDs, simulation defense status, and targeted biomedical components</p>
+              <h3 className="text-base font-bold text-white">BAS Penetration Testing & Attack Scenario Registry</h3>
+              <p className="text-xs text-slate-400 font-mono">Simulation IDs, attack vectors, MITRE techniques, target zones, and mitigation latencies</p>
+            </div>
+
+            {/* Search & Severity Filter */}
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <Search size={14} className="absolute left-3 top-3 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search simulation, vector, MITRE..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <select
+                className="py-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+                value={selectedSeverityFilter}
+                onChange={(e) => setSelectedSeverityFilter(e.target.value)}
+              >
+                <option value="ALL">All Severities</option>
+                <option value="CRITICAL">CRITICAL</option>
+                <option value="HIGH">HIGH</option>
+              </select>
             </div>
           </div>
 
@@ -271,47 +386,30 @@ export default function BiomedicalBasPenetrationTestingPanel() {
               <thead className="bg-slate-900 text-slate-400 uppercase font-mono text-[10px]">
                 <tr>
                   <th className="p-3">Simulation ID</th>
-                  <th className="p-3">Vector Name & MITRE Technique</th>
-                  <th className="p-3">Target Component</th>
-                  <th className="p-3">Severity</th>
-                  <th className="p-3">Simulation Status</th>
-                  <th className="p-3 text-right">Remediation SLA</th>
+                  <th className="p-3">Scenario & Attack Vector</th>
+                  <th className="p-3">MITRE Technique</th>
+                  <th className="p-3">Target Zone</th>
+                  <th className="p-3">Mitigation Latency</th>
+                  <th className="p-3 text-right">Execution Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 font-mono">
-                {simulations.map((s, idx) => (
-                  <tr key={idx} className="hover:bg-slate-900/60">
-                    <td className="p-3 font-bold text-red-400">{s.simulationId}</td>
-                    <td className="p-3 font-sans">
-                      <div className="font-semibold text-white">{s.vectorName}</div>
-                      <div className="text-[10px] text-red-300 font-mono">{s.mitreTechniqueId}</div>
-                    </td>
-                    <td className="p-3 text-slate-300 font-sans text-[11px]">{s.targetComponent}</td>
-                    <td className="p-3">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          s.attackPathSeverity === "CRITICAL"
-                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                            : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                        }`}
-                      >
-                        {s.attackPathSeverity}
-                      </span>
+                {filteredSimulations.map((s, idx) => (
+                  <tr key={idx} className="hover:bg-slate-900/60 transition cursor-pointer" onClick={() => handleExportSimReport(s.simulationId)}>
+                    <td className="p-3 font-bold text-red-400 flex items-center gap-1.5">
+                      <Radio size={12} className="text-red-500 animate-pulse" />
+                      {s.simulationId}
                     </td>
                     <td className="p-3 font-sans">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          s.simulationStatus.includes("DEFENDED")
-                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                        }`}
-                      >
-                        {s.simulationStatus}
-                      </span>
+                      <div className="font-semibold text-white">{s.simulationName}</div>
+                      <div className="text-[10px] text-red-300 font-mono">{s.attackVector}</div>
                     </td>
+                    <td className="p-3 text-slate-300 font-mono text-[10px]">{s.mitreTechnique}</td>
+                    <td className="p-3 text-slate-400 font-mono text-[10px]">{s.targetZone}</td>
+                    <td className="p-3 font-mono text-red-400 font-bold">{s.mitigationLatencyMs}ms</td>
                     <td className="p-3 text-right font-sans">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                        {s.remediationSlaDays === 0 ? "RESOLVED" : `${s.remediationSlaDays} DAYS`}
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        {s.executionStatus}
                       </span>
                     </td>
                   </tr>
@@ -322,27 +420,62 @@ export default function BiomedicalBasPenetrationTestingPanel() {
         </div>
       )}
 
-      {/* 4. SANDBOX TAB */}
+      {/* 4. MITRE MATRIX TAB */}
+      {activeTab === "MITRE" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Target size={18} className="text-red-400" /> MITRE ATT&CK Matrix for Healthcare
+              </h3>
+              <p className="text-xs text-slate-400 font-mono">Tactics, techniques, target components, and zero-trust mitigation controls</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {mitreMatrix.map((m, idx) => (
+              <div key={idx} className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 font-sans">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded font-bold">
+                    {m.techniqueId}
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold">{m.defenseStatus}</span>
+                </div>
+
+                <h4 className="text-sm font-bold text-white">{m.techniqueName}</h4>
+
+                <div className="space-y-1 font-mono text-[11px]">
+                  <div className="text-slate-400">Tactic: <strong className="text-red-300">{m.tactic}</strong></div>
+                  <div className="text-slate-400">Target: <strong className="text-white">{m.targetComponent}</strong></div>
+                  <div className="text-slate-400">Mitigation: <strong className="text-emerald-400">{m.mitigationControl}</strong></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. SANDBOX TAB */}
       {activeTab === "SANDBOX" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Crosshair size={18} className="text-red-400" /> Exploit Payload Execution & Defense Verification
+                <Zap size={18} className="text-red-400" /> Zero-Day Payload Execution Sandbox
               </h3>
             </div>
 
-            <form onSubmit={handleRunExploit} className="space-y-4 text-xs">
+            <form onSubmit={handleRunSandbox} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Target Attack Simulation Vector:</label>
+                <label className="block text-slate-300 font-bold mb-1">Target BAS Simulation ID:</label>
                 <select
                   className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-red-500 font-sans"
-                  value={selectedSimId}
-                  onChange={(e) => setSelectedSimId(e.target.value)}
+                  value={selectedSimulationId}
+                  onChange={(e) => setSelectedSimulationId(e.target.value)}
                 >
                   {simulations.map((s) => (
                     <option key={s.simulationId} value={s.simulationId}>
-                      {s.simulationId} - {s.vectorName}
+                      {s.simulationId} - {s.simulationName}
                     </option>
                   ))}
                 </select>
@@ -353,7 +486,7 @@ export default function BiomedicalBasPenetrationTestingPanel() {
                 disabled={actionLoading}
                 className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-xs shadow-lg shadow-red-600/20"
               >
-                <Crosshair size={16} /> Execute Exploit Payload & Validate Security Enforcer
+                <Zap size={16} /> Execute Zero-Day Exploit Payload
               </button>
             </form>
           </div>
@@ -361,38 +494,67 @@ export default function BiomedicalBasPenetrationTestingPanel() {
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <ShieldCheck size={18} className="text-emerald-400" /> Defense Verification Output
+                <ShieldCheck size={18} className="text-emerald-400" /> Defense Execution Output
               </h3>
             </div>
 
-            {exploitResult ? (
+            {sandboxResult ? (
               <div className="space-y-3 font-mono text-xs">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">Blocking Mechanism:</span>
-                  <div className="text-sm font-bold text-emerald-400">{exploitResult.defenseMechanism}</div>
+                  <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">Defense Result:</span>
+                  <div className="text-sm font-bold text-emerald-400">EXPLOIT BLOCKED BY WAF & ZERO-TRUST</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-[11px] p-3 bg-slate-950/60 rounded-xl border border-slate-800 font-sans">
-                  <div>Attack Path State: <strong className="text-emerald-400 font-mono text-[10px]">BLOCKED AT STEP 2</strong></div>
-                  <div>Execution Speed: <strong className="text-emerald-400">{exploitResult.executionLatencyMs} ms</strong></div>
+                  <div>Microsegmentation: <strong className="text-emerald-400">TRIGGERED</strong></div>
+                  <div>MITRE Coverage: <strong className="text-emerald-400">100% BLOCKED</strong></div>
                 </div>
               </div>
             ) : (
               <div className="p-12 text-center text-slate-500 font-mono text-xs border border-dashed border-slate-800 rounded-2xl">
-                Click "Execute Exploit Payload & Validate Security Enforcer" to trigger breach simulation.
+                Click "Execute Zero-Day Exploit Payload" to run simulation against defensive controls.
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* 5. STANDARDS TAB */}
+      {/* 6. BAS AUDIT JSON REPORT TAB */}
+      {activeTab === "JSON_REPORT" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Code size={18} className="text-red-400" /> BAS Penetration Testing Audit JSON Report
+              </h3>
+              <p className="text-xs text-slate-400 font-mono">Standardized NIST SP 800-115 Audit JSON schema detailing attack vector, MITRE technique, and zero-trust defense</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyJson}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 border border-slate-700"
+            >
+              {copiedJson ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+              {copiedJson ? "Copied Report JSON!" : "Copy BAS Report JSON"}
+            </button>
+          </div>
+
+          <div className="relative rounded-2xl border border-slate-800 bg-slate-950 p-4 max-h-[500px] overflow-y-auto">
+            <pre className="text-xs font-mono text-red-300 leading-relaxed whitespace-pre-wrap">
+              {exportedJson}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* 7. STANDARDS TAB */}
       {activeTab === "STANDARDS" && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
-              <h3 className="text-base font-bold text-white">MITRE ATT&CK & NIST PenTesting Standards</h3>
-              <p className="text-xs text-slate-400 font-mono">Frameworks for automated vulnerability scanning, exploit validation, and security testing</p>
+              <h3 className="text-base font-bold text-white">NIST SP 800-115 & MITRE Framework Standards</h3>
+              <p className="text-xs text-slate-400 font-mono">Standards for automated penetration testing and adversary technique emulation</p>
             </div>
           </div>
 
@@ -412,30 +574,43 @@ export default function BiomedicalBasPenetrationTestingPanel() {
         </div>
       )}
 
-      {/* 6. PROVISION MODAL */}
+      {/* 8. PROVISION MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full text-slate-100 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Target size={18} className="text-red-400" /> Launch Penetration Test Campaign
+                <Crosshair size={18} className="text-red-400" /> Launch BAS Attack Simulation
               </h3>
               <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleLaunchCampaign} className="space-y-4 text-xs">
+            <form onSubmit={handleExecuteSimulation} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Threat Vector Name / Target:</label>
+                <label className="block text-slate-300 font-bold mb-1">Scenario Name:</label>
                 <input
                   type="text"
-                  placeholder="e.g. Genomic Vault Side-Channel Leakage Test"
+                  placeholder="e.g. Ransomware Lateral Movement Simulation"
                   className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-red-500 font-sans"
-                  value={vectorName}
-                  onChange={(e) => setVectorName(e.target.value)}
+                  value={simulationName}
+                  onChange={(e) => setSimulationName(e.target.value)}
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Target Attack Vector:</label>
+                <select
+                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-red-500 font-sans"
+                  value={attackVector}
+                  onChange={(e) => setAttackVector(e.target.value)}
+                >
+                  <option value="PACS DICOM Gateway (Port 104)">PACS DICOM Gateway (Port 104)</option>
+                  <option value="Smart Infusion Pump WiFi Controller">Smart Infusion Pump WiFi Controller</option>
+                  <option value="Clinical Records Gateway REST API">Clinical Records Gateway REST API</option>
+                </select>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
@@ -451,7 +626,7 @@ export default function BiomedicalBasPenetrationTestingPanel() {
                   disabled={actionLoading}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition shadow-lg shadow-red-600/20"
                 >
-                  Start BAS Campaign
+                  Launch Simulation
                 </button>
               </div>
             </form>

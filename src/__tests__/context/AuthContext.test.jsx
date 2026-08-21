@@ -56,6 +56,66 @@ it("logout clears authority state from sessionStorage", async () => {
   expect(sessionStorage.getItem("medtrack_authority")).toBeNull();
 });
 
+const REASON_KEY = "medtrack_session_end_reason";
+
+it("logout persists the session-end reason and exposes it", async () => {
+  let ctx;
+  renderWithProvider((c) => { ctx = c; });
+
+  const reason = "Your session was locked after 15m 0s of inactivity. Please sign in again.";
+  await act(async () => { ctx.logout(reason); });
+
+  expect(ctx.revokedReason).toBe(reason);
+  expect(JSON.parse(sessionStorage.getItem(REASON_KEY))).toBe(reason);
+});
+
+it("logout without a reason leaves no session-end notice", async () => {
+  sessionStorage.setItem(REASON_KEY, JSON.stringify("stale reason"));
+
+  let ctx;
+  renderWithProvider((c) => { ctx = c; });
+
+  await act(async () => { ctx.logout(); });
+
+  expect(ctx.revokedReason).toBeNull();
+  expect(sessionStorage.getItem(REASON_KEY)).toBeNull();
+});
+
+it("restores a persisted session-end reason on provider mount", () => {
+  const reason = "Your session was ended by an administrator. Please sign in again.";
+  sessionStorage.setItem(REASON_KEY, JSON.stringify(reason));
+
+  let ctx;
+  renderWithProvider((c) => { ctx = c; });
+
+  expect(ctx.revokedReason).toBe(reason);
+});
+
+it("login clears the session-end reason", async () => {
+  sessionStorage.setItem(REASON_KEY, JSON.stringify("stale reason"));
+
+  let ctx;
+  renderWithProvider((c) => { ctx = c; });
+
+  const userData = { id: "u1", name: "Test", role: "hospital", token: "tok" };
+  await act(async () => { ctx.login(userData); });
+
+  expect(ctx.revokedReason).toBeNull();
+  expect(sessionStorage.getItem(REASON_KEY)).toBeNull();
+});
+
+it("clearRevokedReason dismisses the notice and clears storage", async () => {
+  sessionStorage.setItem(REASON_KEY, JSON.stringify("Your session was locked."));
+
+  let ctx;
+  renderWithProvider((c) => { ctx = c; });
+
+  await act(async () => { ctx.clearRevokedReason(); });
+
+  expect(ctx.revokedReason).toBeNull();
+  expect(sessionStorage.getItem(REASON_KEY)).toBeNull();
+});
+
 it("hasPermission returns true when permissionName is empty", async () => {
   let ctx;
   renderWithProvider((c) => { ctx = c; });

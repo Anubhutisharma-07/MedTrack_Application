@@ -1,10 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { getApprovalInbox, decideApprovalStep } from '../../services/ProcurementService';
+import { useToast } from '../../context/ToastContext';
+import { SimpleModal } from '../../components/common/Modal';
 
 const ApprovalInbox = ({ onNavigate }) => {
+  const { addToast } = useToast();
   const [steps, setSteps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deciding, setDeciding] = useState(null);
+  
+  // Modal states for decision flow
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
+  const [activeStepId, setActiveStepId] = useState(null);
+  const [isApprove, setIsApprove] = useState(true);
+  const [comment, setComment] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
     fetchInbox();
@@ -21,23 +31,37 @@ const ApprovalInbox = ({ onNavigate }) => {
     }
   };
 
-  const handleDecision = async (stepId, approve) => {
-    const comment = prompt(approve ? 'Approval comment (optional):' : 'Rejection reason (required):');
-    if (!approve && (!comment || !comment.trim())) {
-      alert('Rejection reason is required');
+  const handleDecisionClick = (stepId, approve) => {
+    setActiveStepId(stepId);
+    setIsApprove(approve);
+    setComment('');
+    setValidationError('');
+    setShowDecisionModal(true);
+  };
+
+  const handleConfirmDecision = async () => {
+    if (!isApprove && (!comment || !comment.trim())) {
+      setValidationError('Rejection reason is required');
+      return;
+    }
+    if (comment.length > 500) {
+      setValidationError('Comment must be 500 characters or less');
       return;
     }
 
-    setDeciding(stepId);
+    setShowDecisionModal(false);
+    setDeciding(activeStepId);
     try {
-      await decideApprovalStep(stepId, approve, comment || '');
-      alert(approve ? 'Step approved successfully!' : 'Step rejected');
+      await decideApprovalStep(activeStepId, isApprove, comment.trim());
+      addToast(isApprove ? 'Step approved successfully!' : 'Step rejected', 'success');
       fetchInbox();
     } catch (err) {
       console.error('Error deciding step:', err);
-      alert('Failed to record decision. Please try again.');
+      addToast('Failed to record decision. Please try again.', 'error');
     } finally {
       setDeciding(null);
+      setActiveStepId(null);
+      setComment('');
     }
   };
 
@@ -136,14 +160,14 @@ const ApprovalInbox = ({ onNavigate }) => {
                         {step.status === 'PENDING' ? (
                           <div className="flex items-center justify-end gap-2">
                             <button
-                              onClick={() => handleDecision(step.id, true)}
+                              onClick={() => handleDecisionClick(step.id, true)}
                               disabled={deciding === step.id}
                               className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                             >
                               Approve
                             </button>
                             <button
-                              onClick={() => handleDecision(step.id, false)}
+                              onClick={() => handleDecisionClick(step.id, false)}
                               disabled={deciding === step.id}
                               className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                             >
@@ -162,6 +186,56 @@ const ApprovalInbox = ({ onNavigate }) => {
           )}
         </div>
       </div>
+
+      {showDecisionModal && (
+        <SimpleModal
+          title={isApprove ? 'Approve Procurement Step' : 'Reject Procurement Step'}
+          subtitle={isApprove ? 'Add an optional comment to your approval decision' : 'Provide a mandatory reason for rejecting this step'}
+          onClose={() => setShowDecisionModal(false)}
+        >
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="comment" className="block text-xs font-medium text-slate-300 mb-1.5">
+                {isApprove ? 'Comment (Optional)' : 'Reason for Rejection (Required)'}
+              </label>
+              <textarea
+                id="comment"
+                rows={4}
+                value={comment}
+                onChange={(e) => {
+                  setComment(e.target.value);
+                  if (validationError) setValidationError('');
+                }}
+                maxLength={500}
+                placeholder={isApprove ? 'Add any additional notes/comments here...' : 'Explain why this request is being rejected...'}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 p-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+              <div className="flex justify-between mt-1 text-[11px] text-slate-500">
+                <span>{validationError ? <span className="text-red-400">{validationError}</span> : ''}</span>
+                <span>{comment.length}/500</span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDecisionModal(false)}
+                className="px-4 py-2 border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDecision}
+                className={`px-4 py-2 text-white rounded-lg text-sm transition-colors ${
+                  isApprove ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {isApprove ? 'Confirm Approval' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </SimpleModal>
+      )}
     </div>
   );
 };

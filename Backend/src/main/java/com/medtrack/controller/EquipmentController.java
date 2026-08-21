@@ -1,5 +1,6 @@
 package com.medtrack.controller;
 
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.EquipmentStatisticsResponse;
 import com.medtrack.dto.LowStockSummaryResponse;
 import com.medtrack.dto.StockAdjustmentRequest;
@@ -9,11 +10,12 @@ import com.medtrack.model.EquipmentCategory;
 import com.medtrack.model.EquipmentStatus;
 import com.medtrack.service.EquipmentService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -28,13 +30,21 @@ import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.springframework.validation.annotation.Validated;
+
 @RestController
 @RequestMapping("/api/equipment")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class EquipmentController {
 
     private final EquipmentService equipmentService;
+    private final PaginationConfig paginationConfig;
+
+    @org.springframework.beans.factory.annotation.Value("${app.csv.import.max-size-bytes:10485760}")
+    private long maxCsvSizeBytes;
 
     /**
      * Retrieves a paginated list of equipment records associated with the authenticated hospital.
@@ -46,8 +56,13 @@ public class EquipmentController {
     @GetMapping
     public ResponseEntity<com.medtrack.dto.PagedResponse<Equipment>> getAllEquipment(
             @RequestParam(required = false) Long locationId,
-            @PageableDefault(sort = "name") Pageable pageable,
+            @RequestParam(required = false) @Min(value = 0, message = "Page number cannot be less than 0") Integer page,
+            @RequestParam(required = false) @Min(value = 1, message = "Page size must not be less than 1") Integer size,
             Principal principal) {
+
+        int actualPage = page != null ? page : paginationConfig.getDefaultPage();
+        int actualSize = size != null ? size : paginationConfig.getDefaultPageSize();
+        Pageable pageable = PageRequest.of(actualPage, actualSize, Sort.by("name"));
 
         return ResponseEntity.ok(
                 com.medtrack.dto.PagedResponse.of(
@@ -248,8 +263,12 @@ public class EquipmentController {
     @GetMapping("/archived")
     @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<Page<Equipment>> getArchivedEquipment(
-            @PageableDefault(sort = "deletedAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @RequestParam(required = false) @Min(value = 0, message = "Page number cannot be less than 0") Integer page,
+            @RequestParam(required = false) @Min(value = 1, message = "Page size must not be less than 1") Integer size,
             Principal principal) {
+        int actualPage = page != null ? page : paginationConfig.getDefaultPage();
+        int actualSize = size != null ? size : paginationConfig.getDefaultPageSize();
+        Pageable pageable = PageRequest.of(actualPage, actualSize, Sort.by(Sort.Direction.DESC, "deletedAt"));
         return ResponseEntity.ok(equipmentService.getArchivedEquipment(principal.getName(), pageable));
     }
 
@@ -282,6 +301,7 @@ public class EquipmentController {
     public ResponseEntity<com.medtrack.dto.EquipmentImportSummary> importEquipment(
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
             Principal principal) {
+        validateCsvFile(file);
         return ResponseEntity.ok(equipmentService.importEquipmentFromCsv(file, principal.getName()));
     }
 
@@ -299,7 +319,21 @@ public class EquipmentController {
     public ResponseEntity<com.medtrack.dto.EquipmentImportPreviewResponse> previewImport(
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
             Principal principal) {
+        validateCsvFile(file);
         return ResponseEntity.ok(equipmentService.previewEquipmentImport(file, principal.getName()));
+    }
+
+    private void validateCsvFile(org.springframework.web.multipart.MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Missing or empty CSV file");
+        }
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
+            throw new IllegalArgumentException("Invalid file extension. Only .csv files are allowed");
+        }
+        if (file.getSize() > maxCsvSizeBytes) {
+            throw new IllegalArgumentException("CSV file size exceeds the maximum allowed limit of " + maxCsvSizeBytes + " bytes");
+        }
     }
 
     /**
@@ -374,7 +408,7 @@ public class EquipmentController {
     }
     @GetMapping("/search")
     public ResponseEntity<List<Equipment>> searchEquipment(
-            @RequestParam String keyword,
+            @RequestParam @NotBlank(message = "Search keyword must not be blank") @Size(min = 2, max = 100, message = "Search keyword must be between 2 and 100 characters") String keyword,
             Principal principal) {
 
         return ResponseEntity.ok(
@@ -407,15 +441,8 @@ public class EquipmentController {
 
     @GetMapping("/export")
     @PreAuthorize("hasRole('HOSPITAL')")
-    public ResponseEntity<byte[]> exportEquipment(Principal principal) {
-
-        byte[] csv = equipmentService.exportEquipmentCsv(principal.getName());
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=equipment.csv")
-                .contentType(MediaType.parseMediaType("text/csv"))
-                .body(csv);
+    public void exportEquipment(Principal principal, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        equipmentService.exportEquipmentCsv(principal.getName(), response);
     }
 
     /**

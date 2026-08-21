@@ -1,5 +1,6 @@
 package com.medtrack.controller;
 
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.DataSanitizationRequest;
 import com.medtrack.dto.EquipmentDisposalRequest;
 import com.medtrack.dto.EquipmentDisposalResponse;
@@ -9,9 +10,9 @@ import com.medtrack.service.EquipmentDisposalService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
@@ -41,6 +43,7 @@ import java.util.List;
 public class EquipmentDisposalController {
 
     private final EquipmentDisposalService disposalService;
+    private final PaginationConfig paginationConfig;
 
     /**
      * Retired and disposed assets for the caller's hospital - the retired view.
@@ -50,8 +53,12 @@ public class EquipmentDisposalController {
     @GetMapping("/retired")
     @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<Page<Equipment>> getRetiredEquipment(
-            @PageableDefault(sort = "name", direction = Sort.Direction.ASC) Pageable pageable,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             Principal principal) {
+        int actualPage = page != null ? page : paginationConfig.getDefaultPage();
+        int actualSize = size != null ? size : paginationConfig.getDefaultPageSize();
+        Pageable pageable = PageRequest.of(actualPage, actualSize, Sort.by(Sort.Direction.ASC, "name"));
         return ResponseEntity.ok(disposalService.getRetiredEquipment(principal.getName(), pageable));
     }
 

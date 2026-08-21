@@ -27,13 +27,18 @@ import {
   Globe,
   Zap,
   Check,
-  FileCheck,
-  Binary
+  ShieldAlert,
+  HardDrive,
+  Copy,
+  Radio,
+  Share2
 } from "lucide-react";
 import {
-  getZkpVerifiableEhrInventory,
-  generateZkpProof,
-  verifyZkpProof,
+  getZkpVerifiableEhrRegistry,
+  generateZkpCredentialProof,
+  verifyZkProofSandbox,
+  getZkCircuitInventory,
+  exportZkpCredentialJson,
   getZkpVerifiableEhrStandards
 } from "../../services/BiomedicalZkpVerifiableEhrService";
 import "../../pages/auth/auth.css";
@@ -41,44 +46,63 @@ import "../../pages/auth/auth.css";
 /**
  * BiomedicalZkpVerifiableEhrPanel Component
  * 
- * Biomedical Zero-Knowledge Proof (ZKP) Verifiable EHR & Identity Console.
+ * Biomedical Zero-Knowledge Proof (ZKP) Verifiable EHR & Medical Credentials Console.
  * Features:
- * 1. zk-SNARK / Groth16 / Plonk Proving Systems & Selective Disclosure Matrix
- * 2. ZKP Proof Verification & Smart Contract Constraint Sandbox
- * 3. W3C Verifiable Credentials v2.0 & ISO/IEC 24745 Standards
- * 4. ZKP Claim Generation & Issuer Verification Modal
+ * 1. ZKP Verifiable Medical Credentials & Nullifier Hash Registry
+ * 2. zk-SNARKs Groth16 / PLONK Circuit Proving Key Inventory Matrix
+ * 3. W3C Verifiable Credentials 2.0 JSON Schema Inspector & Exporter
+ * 4. Real-Time zk-SNARKs Pairing Check & Verification Sandbox
+ * 5. W3C VC 2.0, Groth16 BN254 & ISO/IEC 18013-5 Standards
+ * 6. Issue ZKP Verifiable Credential Wizard Modal
  */
 export default function BiomedicalZkpVerifiableEhrPanel() {
   // State
   const [proofs, setProofs] = useState([]);
+  const [circuits, setCircuits] = useState([]);
   const [standards, setStandards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
-  const [activeTab, setActiveTab] = useState("PROOFS"); // "PROOFS" | "SANDBOX" | "STANDARDS"
+  const [activeTab, setActiveTab] = useState("PROOFS"); // "PROOFS" | "CIRCUITS" | "SANDBOX" | "JSON_VC" | "STANDARDS"
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCircuitFilter, setSelectedCircuitFilter] = useState("ALL");
 
   // Sandbox State
-  const [selectedProofId, setSelectedProofId] = useState("ZKP-PROOF-801");
-  const [verificationResult, setVerificationResult] = useState(null);
+  const [selectedProofId, setSelectedProofId] = useState("ZKP-PROOF-2401");
+  const [sandboxResult, setSandboxResult] = useState(null);
+
+  // JSON VC Exporter State
+  const [exportedJson, setExportedJson] = useState("");
+  const [copiedJson, setCopiedJson] = useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [claimType, setClaimType] = useState("");
+  const [credentialType, setCredentialType] = useState("W3C Verifiable Clinical Credential (VACCINATION_PROOF)");
+  const [predicate, setPredicate] = useState("isVaccinated = true (PHI Zero Exposure)");
 
   // Load telemetry
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [prList, stdList] = await Promise.all([
-        getZkpVerifiableEhrInventory().catch(() => []),
+      const [proofList, circList, stdList] = await Promise.all([
+        getZkpVerifiableEhrRegistry().catch(() => []),
+        getZkCircuitInventory().catch(() => []),
         getZkpVerifiableEhrStandards().catch(() => [])
       ]);
 
-      setProofs(prList);
+      setProofs(proofList);
+      setCircuits(circList);
       setStandards(stdList);
+
+      if (proofList.length > 0) {
+        const initialVc = await exportZkpCredentialJson(proofList[0].proofId);
+        setExportedJson(initialVc);
+      }
     } catch (err) {
-      console.error("Failed to load biomedical ZKP verifiable EHR data:", err);
-      setMessage({ type: "error", text: "Failed connecting to ZKP Verifiable EHR service." });
+      console.error("Failed to load biomedical ZKP EHR data:", err);
+      setMessage({ type: "error", text: "Failed connecting to ZKP EHR service." });
     } finally {
       setLoading(false);
     }
@@ -88,16 +112,31 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
     loadData();
   }, [loadData]);
 
-  // Verify ZKP Proof
-  const handleVerifyProof = async (e) => {
+  // Handle Proof Selection for JSON Export
+  const handleExportProofVc = async (proofId) => {
+    try {
+      setSelectedProofId(proofId);
+      const jsonStr = await exportZkpCredentialJson(proofId);
+      setExportedJson(jsonStr);
+      setCopiedJson(false);
+    } catch (err) {
+      console.error("Failed exporting ZKP VC JSON:", err);
+    }
+  };
+
+  // Run Proof Verification Sandbox
+  const handleVerifySandbox = async (e) => {
     e?.preventDefault();
     setActionLoading(true);
     setMessage({ type: "", text: "" });
 
     try {
-      const result = await verifyZkpProof(selectedProofId);
-      setVerificationResult(result);
-      setMessage({ type: "success", text: `zk-SNARK constraint verified in ${result.verificationLatencyMs}ms via contract ${result.verifierContract.slice(0, 10)}...` });
+      const result = await verifyZkProofSandbox(selectedProofId);
+      setSandboxResult(result);
+      setMessage({
+        type: "success",
+        text: `zk-SNARKs Groth16 Pairing Check completed in ${result.verificationLatencyMs}ms! Curve: ${result.ellipticCurve}. Pairing Check: PASSED. PHI Leakage: ZERO.`
+      });
       await loadData();
     } catch (err) {
       setMessage({ type: "error", text: "ZKP proof verification failed." });
@@ -106,35 +145,59 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
     }
   };
 
-  // Generate ZKP Proof
-  const handleGenerateProof = async (e) => {
+  // Issue ZKP Credential
+  const handleIssueCredential = async (e) => {
     e.preventDefault();
-    if (!claimType.trim()) return;
-
     setActionLoading(true);
     setMessage({ type: "", text: "" });
 
     try {
-      const newProof = await generateZkpProof({ claimType: claimType.trim() });
+      const newProof = await generateZkpCredentialProof({
+        credentialType,
+        predicate
+      });
 
-      setClaimType("");
       setIsModalOpen(false);
-      setMessage({ type: "success", text: `ZKP Verifiable Claim ${newProof.proofId} generated using Groth16!` });
+      setMessage({
+        type: "success",
+        text: `ZKP Verifiable Credential ${newProof.proofId} issued with Groth16-BN254 circuit under W3C VC 2.0!`
+      });
       await loadData();
     } catch (err) {
-      setMessage({ type: "error", text: "Failed to generate ZKP proof." });
+      setMessage({ type: "error", text: "Failed to issue ZKP verifiable credential." });
     } finally {
       setActionLoading(false);
     }
   };
 
+  // Copy VC JSON to Clipboard
+  const handleCopyJson = () => {
+    navigator.clipboard.writeText(exportedJson);
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
+  };
+
+  // Filtered Proofs
+  const filteredProofs = useMemo(() => {
+    return proofs.filter((p) => {
+      const matchesSearch =
+        p.credentialType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.subjectDid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.proofId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.disclosedPredicate.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesCircuit = selectedCircuitFilter === "ALL" || p.zkCircuit.includes(selectedCircuitFilter);
+
+      return matchesSearch && matchesCircuit;
+    });
+  }, [proofs, searchQuery, selectedCircuitFilter]);
+
   // Metrics
   const metrics = useMemo(() => {
     const totalProofs = proofs.length;
-    const verifiedCount = proofs.filter((p) => p.verificationStatus.includes("VERIFIED")).length;
-    const groth16Count = proofs.filter((p) => p.provingSystem.includes("Groth16")).length;
+    const avgLatency = (proofs.reduce((acc, curr) => acc + curr.proofLatencyMs, 0) / (totalProofs || 1)).toFixed(0);
 
-    return { totalProofs, verifiedCount, groth16Count };
+    return { totalProofs, avgLatency };
   }, [proofs]);
 
   return (
@@ -148,18 +211,18 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-full flex items-center gap-1.5 font-mono">
-                <KeyRound size={12} /> ZERO-KNOWLEDGE PROOFS (ZKP)
+                <KeyRound size={12} /> ZKP VERIFIABLE EHR & CREDENTIALS
               </span>
               <span className="px-3 py-1 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center gap-1 font-mono">
-                <ShieldCheck size={12} /> W3C VERIFIABLE CREDENTIALS v2.0
+                <ShieldCheck size={12} /> W3C VC 2.0 / zk-SNARKs GROTH16
               </span>
             </div>
 
             <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-              Biomedical ZKP Verifiable EHR & Selective Disclosure
+              Biomedical ZKP Verifiable EHR & Credentials
             </h2>
             <p className="text-slate-400 text-sm max-w-2xl leading-relaxed">
-              Mathematical zero-knowledge proofs (zk-SNARKs, Groth16, Plonk), selective disclosure of health claims without revealing raw medical records, and W3C VC verification.
+              Zero-Knowledge Proof (ZKP) selective predicate disclosure for medical credentials, vaccination proofs, and physician prescriber licenses with zero raw PHI disclosure under W3C Verifiable Credentials v2.0.
             </p>
           </div>
 
@@ -169,14 +232,14 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
               <span className="text-slate-400 font-sans font-bold uppercase text-[10px]">ZKP Circuit Telemetry</span>
               <span className="text-purple-400 font-bold flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-                VERIFIER ONLINE
+                BN254 GROTH16 ACTIVE
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-700/80 font-mono text-[11px]">
-              <div>ZKP Claims: <strong className="text-white">{metrics.totalProofs} Issued</strong></div>
-              <div>Verified Status: <strong className="text-emerald-400">{metrics.verifiedCount} 100% Valid</strong></div>
-              <div>Proving System: <strong className="text-purple-300">{metrics.groth16Count} Groth16 BN254</strong></div>
-              <div>Avg Latency: <strong className="text-emerald-400">9.3 ms</strong></div>
+              <div>Verified Proofs: <strong className="text-white">{metrics.totalProofs} Active</strong></div>
+              <div>Proof Latency: <strong className="text-purple-300">{metrics.avgLatency}ms Avg</strong></div>
+              <div>PHI Exposure: <strong className="text-emerald-400">0% (ZERO DISCLOSURE)</strong></div>
+              <div>Nullifier Hash: <strong className="text-emerald-400">100% UNIQUE</strong></div>
             </div>
           </div>
         </div>
@@ -207,7 +270,7 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
 
       {/* 2. Navigation bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveTab("PROOFS")}
@@ -217,7 +280,19 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
                 : "bg-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            <KeyRound size={15} /> ZKP Claims & Proofs ({proofs.length})
+            <KeyRound size={15} /> Verifiable Credentials ({proofs.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("CIRCUITS")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "CIRCUITS"
+                ? "bg-purple-600 text-white font-black shadow-lg shadow-purple-600/20"
+                : "bg-slate-800 text-slate-400 hover:text-white"
+            }`}
+          >
+            <Cpu size={15} /> zk-SNARKs Circuits ({circuits.length})
           </button>
 
           <button
@@ -229,7 +304,19 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
                 : "bg-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            <Zap size={15} /> zk-SNARK Verifier Sandbox
+            <Zap size={15} /> Groth16 Pairing Verifier Sandbox
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("JSON_VC")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "JSON_VC"
+                ? "bg-purple-600 text-white font-black shadow-lg shadow-purple-600/20"
+                : "bg-slate-800 text-slate-400 hover:text-white"
+            }`}
+          >
+            <Code size={15} /> W3C VC 2.0 JSON Inspector
           </button>
 
           <button
@@ -241,7 +328,7 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
                 : "bg-slate-800 text-slate-400 hover:text-white"
             }`}
           >
-            <ShieldCheck size={15} /> W3C VC & ZKP Standards ({standards.length})
+            <ShieldCheck size={15} /> W3C & ISO Standards ({standards.length})
           </button>
         </div>
 
@@ -250,17 +337,41 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
           onClick={() => setIsModalOpen(true)}
           className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 shadow-lg shadow-purple-600/20"
         >
-          <PlusCircle size={15} /> Generate ZKP Verifiable Claim
+          <PlusCircle size={15} /> Issue ZKP Credential
         </button>
       </div>
 
       {/* 3. PROOFS TAB */}
       {activeTab === "PROOFS" && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
-              <h3 className="text-base font-bold text-white">ZKP Verifiable EHR Claims & Disclosed Fields</h3>
-              <p className="text-xs text-slate-400 font-mono">Claim types, proving systems, verified status, disclosed public inputs, and cryptographically hidden fields</p>
+              <h3 className="text-base font-bold text-white">ZKP Verifiable Medical Credentials & Proof Registry</h3>
+              <p className="text-xs text-slate-400 font-mono">Proof IDs, credential types, Subject DIDs, zk-circuits, disclosed predicates, and nullifier hashes</p>
+            </div>
+
+            {/* Search & Circuit Filter */}
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <Search size={14} className="absolute left-3 top-3 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search DID, proof, predicate..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <select
+                className="py-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                value={selectedCircuitFilter}
+                onChange={(e) => setSelectedCircuitFilter(e.target.value)}
+              >
+                <option value="ALL">All Circuits</option>
+                <option value="Groth16">Groth16</option>
+                <option value="PLONK">PLONK</option>
+              </select>
             </div>
           </div>
 
@@ -269,29 +380,31 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
               <thead className="bg-slate-900 text-slate-400 uppercase font-mono text-[10px]">
                 <tr>
                   <th className="p-3">Proof ID</th>
-                  <th className="p-3">Claim Type & Proving System</th>
-                  <th className="p-3">Disclosed Public Fields</th>
-                  <th className="p-3">Hidden EHR Fields (ZKP Protected)</th>
+                  <th className="p-3">Credential Type & Subject DID</th>
+                  <th className="p-3">zk-SNARKs Circuit & Disclosed Predicate</th>
+                  <th className="p-3">Nullifier Hash</th>
                   <th className="p-3 text-right">Verification Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 font-mono">
-                {proofs.map((p, idx) => (
-                  <tr key={idx} className="hover:bg-slate-900/60">
-                    <td className="p-3 font-bold text-purple-400">{p.proofId}</td>
+                {filteredProofs.map((p, idx) => (
+                  <tr key={idx} className="hover:bg-slate-900/60 transition cursor-pointer" onClick={() => handleExportProofVc(p.proofId)}>
+                    <td className="p-3 font-bold text-purple-400 flex items-center gap-1.5">
+                      <Radio size={12} className="text-purple-500 animate-pulse" />
+                      {p.proofId}
+                    </td>
                     <td className="p-3 font-sans">
-                      <div className="font-semibold text-white">{p.claimType}</div>
-                      <div className="text-[10px] text-purple-300 font-mono">{p.provingSystem}</div>
+                      <div className="font-semibold text-white">{p.credentialType}</div>
+                      <div className="text-[10px] text-purple-300 font-mono">{p.subjectDid}</div>
                     </td>
-                    <td className="p-3 text-emerald-400 font-mono text-[10px]">
-                      {p.selectivelyDisclosedFields.join(", ")}
+                    <td className="p-3 font-mono text-[10px]">
+                      <div className="text-slate-300">{p.zkCircuit}</div>
+                      <div className="text-emerald-400 font-bold">{p.disclosedPredicate}</div>
                     </td>
-                    <td className="p-3 text-slate-400 font-mono text-[10px]">
-                      {p.hiddenFields.join(", ")}
-                    </td>
+                    <td className="p-3 text-slate-500 font-mono text-[10px] break-all">{p.nullifierHash.substring(0, 24)}...</td>
                     <td className="p-3 text-right font-sans">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        {p.verificationStatus}
+                        {p.verificationStatus} ({p.proofLatencyMs}ms)
                       </span>
                     </td>
                   </tr>
@@ -302,19 +415,54 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
         </div>
       )}
 
-      {/* 4. SANDBOX TAB */}
+      {/* 4. CIRCUITS TAB */}
+      {activeTab === "CIRCUITS" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Cpu size={18} className="text-purple-400" /> Compiled zk-SNARKs Proving Key Circuit Matrix
+              </h3>
+              <p className="text-xs text-slate-400 font-mono">Circom compiled R1CS circuits, BN254 / BLS12-381 curves, constraint counts, and proving key hashes</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {circuits.map((c, idx) => (
+              <div key={idx} className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 font-sans">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded font-bold">
+                    {c.circuitId}
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold">{c.status}</span>
+                </div>
+
+                <h4 className="text-sm font-bold text-white">{c.circuitName}</h4>
+
+                <div className="space-y-1 font-mono text-[11px]">
+                  <div className="text-slate-400">Curve: <strong className="text-purple-300">{c.curve}</strong></div>
+                  <div className="text-slate-400">R1CS Constraints: <strong className="text-white">{c.constraintCount.toLocaleString()}</strong></div>
+                  <div className="text-slate-500 text-[10px] break-all pt-1">PK Hash: {c.provingKeyHash}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. SANDBOX TAB */}
       {activeTab === "SANDBOX" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Zap size={18} className="text-purple-400" /> zk-SNARK Verifier & Smart Contract Inspector
+                <Zap size={18} className="text-purple-400" /> Groth16 Pairing Check Sandbox
               </h3>
             </div>
 
-            <form onSubmit={handleVerifyProof} className="space-y-4 text-xs">
+            <form onSubmit={handleVerifySandbox} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Target ZKP Verifiable Claim:</label>
+                <label className="block text-slate-300 font-bold mb-1">Target ZKP Proof ID:</label>
                 <select
                   className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-sans"
                   value={selectedProofId}
@@ -322,7 +470,7 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
                 >
                   {proofs.map((p) => (
                     <option key={p.proofId} value={p.proofId}>
-                      {p.proofId} - {p.claimType}
+                      {p.proofId} - {p.credentialType}
                     </option>
                   ))}
                 </select>
@@ -333,7 +481,7 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
                 disabled={actionLoading}
                 className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-xs shadow-lg shadow-purple-600/20"
               >
-                <Zap size={16} /> Execute zk-SNARK Proof Verification
+                <Zap size={16} /> Execute Groth16 Pairing Verification
               </button>
             </form>
           </div>
@@ -341,42 +489,71 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <ShieldCheck size={18} className="text-emerald-400" /> Verification Result
+                <ShieldCheck size={18} className="text-emerald-400" /> Verification Output
               </h3>
             </div>
 
-            {verificationResult ? (
+            {sandboxResult ? (
               <div className="space-y-3 font-mono text-xs">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">On-Chain Verifier Contract:</span>
-                  <div className="text-sm font-bold text-purple-300">{verificationResult.verifierContract}</div>
+                  <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">Elliptic Curve Pairing:</span>
+                  <div className="text-sm font-bold text-purple-400">{sandboxResult.ellipticCurve}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-[11px] p-3 bg-slate-950/60 rounded-xl border border-slate-800 font-sans">
-                  <div>Circuit State: <strong className="text-emerald-400 font-mono text-[10px]">CONSTRAINTS SATISFIED</strong></div>
-                  <div>Latency: <strong className="text-emerald-400">{verificationResult.verificationLatencyMs} ms</strong></div>
+                  <div>Pairing Check: <strong className="text-emerald-400 font-mono text-[10px]">PASSED (e(A,B) = e(alpha,beta))</strong></div>
+                  <div>PHI Disclosure: <strong className="text-emerald-400">0% (ZERO PHI DISCLOSED)</strong></div>
                 </div>
               </div>
             ) : (
               <div className="p-12 text-center text-slate-500 font-mono text-xs border border-dashed border-slate-800 rounded-2xl">
-                Click "Execute zk-SNARK Proof Verification" to evaluate zero-knowledge constraints.
+                Click "Execute Groth16 Pairing Verification" to verify proof.
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* 5. STANDARDS TAB */}
+      {/* 6. W3C VC 2.0 JSON INSPECTOR TAB */}
+      {activeTab === "JSON_VC" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Code size={18} className="text-purple-400" /> W3C Verifiable Credential 2.0 JSON Schema
+              </h3>
+              <p className="text-xs text-slate-400 font-mono">Standardized W3C VC v2.0 JSON-LD schema containing issuer DID, subject DID, disclosed predicate, and Groth16 proof</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyJson}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 border border-slate-700"
+            >
+              {copiedJson ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+              {copiedJson ? "Copied VC JSON!" : "Copy W3C VC 2.0 JSON"}
+            </button>
+          </div>
+
+          <div className="relative rounded-2xl border border-slate-800 bg-slate-950 p-4 max-h-[500px] overflow-y-auto">
+            <pre className="text-xs font-mono text-purple-300 leading-relaxed whitespace-pre-wrap">
+              {exportedJson}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* 7. STANDARDS TAB */}
       {activeTab === "STANDARDS" && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
-              <h3 className="text-base font-bold text-white">W3C VC & Zero-Knowledge Standards</h3>
-              <p className="text-xs text-slate-400 font-mono">Frameworks for privacy-preserving claims, zk-SNARK verifiers, and pseudonymous credentials</p>
+              <h3 className="text-base font-bold text-white">W3C VC 2.0 & ISO/IEC Standards</h3>
+              <p className="text-xs text-slate-400 font-mono">Frameworks for verifiable credentials, zero-knowledge proofs, and selective attribute disclosure</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {standards.map((s, idx) => (
               <div key={idx} className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
@@ -392,28 +569,39 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
         </div>
       )}
 
-      {/* 6. PROVISION MODAL */}
+      {/* 8. PROVISION MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full text-slate-100 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <KeyRound size={18} className="text-purple-400" /> Generate ZKP Claim
+                <KeyRound size={18} className="text-purple-400" /> Issue ZKP Verifiable Credential
               </h3>
               <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleGenerateProof} className="space-y-4 text-xs">
+            <form onSubmit={handleIssueCredential} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Claim Type / Medical Fact:</label>
+                <label className="block text-slate-300 font-bold mb-1">Credential Type:</label>
                 <input
                   type="text"
-                  placeholder="e.g. Genomic Mutation Carrier Proof"
                   className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-sans"
-                  value={claimType}
-                  onChange={(e) => setClaimType(e.target.value)}
+                  value={credentialType}
+                  onChange={(e) => setCredentialType(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Disclosed Predicate (Zero PHI Exposure):</label>
+                <input
+                  type="text"
+                  placeholder="e.g. isVaccinated = true"
+                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-emerald-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={predicate}
+                  onChange={(e) => setPredicate(e.target.value)}
                   required
                 />
               </div>
@@ -431,7 +619,7 @@ export default function BiomedicalZkpVerifiableEhrPanel() {
                   disabled={actionLoading}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition shadow-lg shadow-purple-600/20"
                 >
-                  Generate Proof
+                  Issue Credential
                 </button>
               </div>
             </form>

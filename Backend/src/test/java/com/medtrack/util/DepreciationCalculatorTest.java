@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -342,5 +343,145 @@ class DepreciationCalculatorTest {
                 new BigDecimal("50000"), null, TODAY);
 
         assertEquals(new BigDecimal("50000.00"), replacement);
+    }
+
+    // -----------------------------------------------------------------
+    // Salvage-aware straight line used by the financial analytics endpoints
+    // -----------------------------------------------------------------
+
+    @Test
+    void currentValue_WritesDownTowardsSalvageNotZero() {
+        // 100k cost, 20k salvage, 10 year life: 8k of depreciable base per year.
+        double value = DepreciationCalculator.calculateCurrentValue(
+                100_000, 20_000, 10, TODAY.minusYears(5), TODAY);
+
+        assertEquals(60_000.00, value, 200.0);
+    }
+
+    @Test
+    void currentValue_StopsAtSalvageFloorAfterEndOfLife() {
+        double value = DepreciationCalculator.calculateCurrentValue(
+                100_000, 20_000, 10, TODAY.minusYears(40), TODAY);
+
+        assertEquals(20_000.00, value, 0.01);
+    }
+
+    @Test
+    void currentValue_ProratesWithinTheFirstYear() {
+        // Whole-year truncation reported an eleven-month-old asset as untouched. Half a year of a
+        // ten year life is 5% of the depreciable base, so the value has to have moved.
+        double value = DepreciationCalculator.calculateCurrentValue(
+                100_000, 0, 10, TODAY.minusDays(183), TODAY);
+
+        assertTrue(value < 100_000, "half a year of life must depreciate something");
+        assertTrue(value > 90_000, "half a year must not depreciate a whole year's charge");
+    }
+
+    @Test
+    void currentValue_ZeroUsefulLife_DoesNotDivideByZero() {
+        double value = DepreciationCalculator.calculateCurrentValue(
+                100_000, 10_000, 0, TODAY.minusYears(3), TODAY);
+
+        assertTrue(Double.isFinite(value), "a zero useful life must not produce Infinity or NaN");
+        assertEquals(100_000.00, value, 0.01);
+    }
+
+    @Test
+    void currentValue_FuturePurchaseDate_NeverExceedsPurchaseCost() {
+        double value = DepreciationCalculator.calculateCurrentValue(
+                100_000, 10_000, 10, TODAY.plusYears(2), TODAY);
+
+        assertEquals(100_000.00, value, 0.01);
+    }
+
+    @Test
+    void currentValue_SalvageAboveCost_IsClampedToCost() {
+        double value = DepreciationCalculator.calculateCurrentValue(
+                50_000, 90_000, 10, TODAY.minusYears(5), TODAY);
+
+        assertEquals(50_000.00, value, 0.01);
+    }
+
+    @Test
+    void annualDepreciation_ZeroUsefulLife_IsZeroNotInfinite() {
+        double annual = DepreciationCalculator.annualDepreciation(100_000, 10_000, 0);
+
+        assertTrue(Double.isFinite(annual));
+        assertEquals(0.0, annual, 0.01);
+    }
+
+    @Test
+    void depreciationPercentage_ZeroCost_IsZero() {
+        assertEquals(0.0, DepreciationCalculator.calculateDepreciationPercentage(0, 0), 0.01);
+    }
+
+    @Test
+    void depreciationPercentage_IsBoundedToOneHundred() {
+        double percentage = DepreciationCalculator.calculateDepreciationPercentage(100_000, -50_000);
+
+        assertEquals(100.0, percentage, 0.01);
+    }
+
+    @Test
+    void depreciationAmount_IsNeverNegative() {
+        assertEquals(0.0, DepreciationCalculator.calculateDepreciationAmount(100, 250), 0.01);
+    }
+
+    @Test
+    void remainingUsefulLife_FuturePurchaseDate_IsTheFullLife() {
+        assertEquals(10, DepreciationCalculator.calculateRemainingUsefulLife(
+                10, TODAY.plusYears(3), TODAY));
+    }
+
+    @Test
+    void remainingUsefulLife_PastEndOfLife_IsFlooredAtZero() {
+        assertEquals(0, DepreciationCalculator.calculateRemainingUsefulLife(
+                10, TODAY.minusYears(25), TODAY));
+    }
+
+    @Test
+    void assetAge_FuturePurchaseDate_IsZero() {
+        assertEquals(0, DepreciationCalculator.assetAge(TODAY.plusYears(4), TODAY));
+    }
+
+    @Test
+    void replacementScore_LongLivedAsset_IsNotNegative() {
+        // 20 years left used to score 100 - 200 = -100.
+        int score = DepreciationCalculator.replacementScore(20, 0);
+
+        assertTrue(score >= 0 && score <= 100, "score out of range: " + score);
+        assertEquals(0, score);
+    }
+
+    @Test
+    void replacementScore_EndOfLifeAndFullyDepreciated_IsMaximal() {
+        assertEquals(100, DepreciationCalculator.replacementScore(0, 100));
+    }
+
+    @Test
+    void needsReplacement_TracksLifeAndDepreciation() {
+        assertTrue(DepreciationCalculator.needsReplacement(1, 10));
+        assertTrue(DepreciationCalculator.needsReplacement(5, 85));
+        assertFalse(DepreciationCalculator.needsReplacement(5, 10));
+    }
+
+    @Test
+    void equipmentHealth_BandsByDepreciation() {
+        assertEquals("EXCELLENT", DepreciationCalculator.equipmentHealth(10));
+        assertEquals("GOOD", DepreciationCalculator.equipmentHealth(45));
+        assertEquals("FAIR", DepreciationCalculator.equipmentHealth(70));
+        assertEquals("POOR", DepreciationCalculator.equipmentHealth(95));
+    }
+
+    @Test
+    void currentValueAgreesWithEntityBookValueWhenThereIsNoSalvage() {
+        // The dashboard and the entity must not disagree about the same asset.
+        BigDecimal entityView = DepreciationCalculator.bookValue(
+                new BigDecimal("100000"), TODAY.minusYears(4), 10,
+                DepreciationMethod.STRAIGHT_LINE, TODAY);
+        double dashboardView = DepreciationCalculator.calculateCurrentValue(
+                100_000, 0, 10, TODAY.minusYears(4), TODAY);
+
+        assertEquals(entityView.doubleValue(), dashboardView, 0.01);
     }
 }

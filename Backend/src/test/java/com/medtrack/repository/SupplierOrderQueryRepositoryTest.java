@@ -16,8 +16,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(properties = {
         "eureka.client.enabled=false",
@@ -88,6 +90,20 @@ class SupplierOrderQueryRepositoryTest {
         assertEquals(1, orderRepository.countOrdersByStatusAndSupplierId("SHIPPED", 41L));
         assertEquals(1, orderRepository.countOrdersByStatusAndSupplierId("SHIPPED", 99L));
         assertEquals(0, orderRepository.countOrdersByStatusAndSupplierId("DELIVERED", 41L));
+    }
+
+    @Test
+    void legacyOrderQueriesAreScopedToShipmentSupplierAssignment() {
+        Page<EquipmentOrder> page = orderRepository.findBySupplierId(41L, PageRequest.of(0, 10));
+        List<EquipmentOrder> history = orderRepository.findBySupplierId(41L);
+
+        assertEquals(2, page.getTotalElements());
+        assertEquals(2, history.size());
+        assertTrue(page.stream().noneMatch(order -> order.getId().equals(otherSupplierOrder.getId())));
+        assertTrue(history.stream().noneMatch(order -> order.getId().equals(otherSupplierOrder.getId())));
+        assertEquals(supplierOrder.getId(),
+                orderRepository.findByIdAndSupplierId(supplierOrder.getId(), 41L).orElseThrow().getId());
+        assertTrue(orderRepository.findByIdAndSupplierId(otherSupplierOrder.getId(), 41L).isEmpty());
     }
 
     private EquipmentOrder saveOrder(String code, String equipmentName, String status, LocalDateTime orderDate) {

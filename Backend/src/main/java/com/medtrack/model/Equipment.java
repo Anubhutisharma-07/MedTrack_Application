@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 @Table(name = "equipment")
 // Hibernate 7 removed @Where; @SQLRestriction is its replacement and carries the same semantics.
 @SQLRestriction("deleted = false")
+@EntityListeners(com.medtrack.listener.EquipmentStatusAuditListener.class)
 @Data
 @Builder
 @NoArgsConstructor
@@ -290,4 +291,14 @@ public class Equipment {
 
     @Column(name = "deleted_by", length = 255)
     private String deletedBy;
+
+    @jakarta.persistence.Transient
+    private EquipmentStatus originalStatus;
+
+    @jakarta.persistence.PostLoad
+    @jakarta.persistence.PostPersist
+    @jakarta.persistence.PostUpdate
+    public void captureOriginalStatus() {
+        this.originalStatus = this.status;
+    }
 }

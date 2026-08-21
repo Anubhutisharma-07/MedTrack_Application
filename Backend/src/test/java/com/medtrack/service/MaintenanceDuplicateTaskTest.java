@@ -121,8 +121,8 @@ class MaintenanceDuplicateTaskTest {
 
         when(equipmentRepository.findByEquipmentCode("EQ-VENT-001"))
                 .thenReturn(Optional.of(equipment));
-        when(taskRepository.existsActiveTaskForEquipment(
-                eq(10L), eq(100L), eq("Corrective"), anyList()))
+        when(taskRepository.existsActiveTaskForEquipmentWithCode(
+                eq(10L), eq(100L), eq("EQ-VENT-001"), eq("Corrective"), anyList()))
                 .thenReturn(true);
 
         IllegalArgumentException exception = assertThrows(
@@ -145,8 +145,8 @@ class MaintenanceDuplicateTaskTest {
 
         when(equipmentRepository.findByEquipmentCode("EQ-VENT-001"))
                 .thenReturn(Optional.of(equipment));
-        when(taskRepository.existsActiveTaskForEquipment(
-                eq(10L), eq(100L), eq("corrective"), anyList()))
+        when(taskRepository.existsActiveTaskForEquipmentWithCode(
+                eq(10L), eq(100L), eq("EQ-VENT-001"), eq("corrective"), anyList()))
                 .thenReturn(true);
 
         IllegalArgumentException exception = assertThrows(
@@ -173,8 +173,8 @@ class MaintenanceDuplicateTaskTest {
                 .thenReturn(Optional.of(equipment));
         when(userRepository.findByEmail("tech@medtrack.com"))
                 .thenReturn(Optional.of(technician));
-        when(taskRepository.existsActiveTaskForEquipment(
-                eq(10L), eq(100L), eq("Preventive"), anyList()))
+        when(taskRepository.existsActiveTaskForEquipmentWithCode(
+                eq(10L), eq(100L), eq("EQ-VENT-001"), eq("Preventive"), anyList()))
                 .thenReturn(false);
 
         MaintenanceTask savedTask = MaintenanceTask.builder()
@@ -217,8 +217,8 @@ class MaintenanceDuplicateTaskTest {
 
         when(equipmentRepository.findByEquipmentCode("EQ-VENT-001"))
                 .thenReturn(Optional.of(equipment));
-        when(taskRepository.existsActiveTaskForEquipment(
-                eq(10L), eq(100L), eq("Calibration"), anyList()))
+        when(taskRepository.existsActiveTaskForEquipmentWithCode(
+                eq(10L), eq(100L), eq("EQ-VENT-001"), eq("Calibration"), anyList()))
                 .thenReturn(false);
 
         MaintenanceTask savedTask = MaintenanceTask.builder()
@@ -257,8 +257,8 @@ class MaintenanceDuplicateTaskTest {
 
         when(equipmentRepository.findByEquipmentCode("EQ-PUMP-002"))
                 .thenReturn(Optional.of(secondEquipment));
-        when(taskRepository.existsActiveTaskForEquipment(
-                eq(10L), eq(101L), eq("Corrective"), anyList()))
+        when(taskRepository.existsActiveTaskForEquipmentWithCode(
+                eq(10L), eq(101L), eq("EQ-PUMP-002"), eq("Corrective"), anyList()))
                 .thenReturn(false);
 
         MaintenanceTask savedTask = MaintenanceTask.builder()

@@ -21,6 +21,7 @@
         <java.version>17</java.version>
         <lombok.version>1.18.46</lombok.version>
         <spring-cloud.version>2025.1.2</spring-cloud.version>
+        <testcontainers.version>1.19.7</testcontainers.version>
     </properties>
 
     <dependencies>
@@ -94,6 +95,26 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+            SupplierIntegrationTest boots the application against a real MySQL container and has
+            lived in src/test/java since the observability phase, but the dependency it needs was
+            never declared, so the entire test source set failed to compile. Versions come from the
+            Spring Boot BOM. The test is annotated to skip when no Docker daemon is reachable, so a
+            machine without Docker gets a skipped test rather than an error.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-webmvc-test</artifactId>
@@ -130,7 +151,7 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>3.0.3</version>
+            <version>3.1.0</version>
         </dependency>
 
         <!-- Bucket4j (Rate Limiting) -->
@@ -195,6 +216,14 @@
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring Boot 4's BOM no longer manages Testcontainers, so pin it here. -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

@@ -17,7 +17,7 @@ export default function ForgotPasswordForm({ onNavigate }) {
       await forgotPassword({ email });
       setSuccess("OTP sent successfully. Redirecting...");
       setTimeout(() => {
-        onNavigate("verify-otp", email);
+        onNavigate("verify-otp", { email });
       }, 1500);
     } catch (err) {
       console.error("Forgot password error:", err);

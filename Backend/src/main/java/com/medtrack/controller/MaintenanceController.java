@@ -8,7 +8,10 @@ import com.medtrack.dto.MaintenanceScheduleRevisionPageResponse;
 import com.medtrack.dto.MaintenanceUpdateRequest;
 import com.medtrack.model.MaintenanceTask;
 import com.medtrack.service.MaintenanceService;
+import com.medtrack.dto.MaintenanceRuleStatusRequest;
+import com.medtrack.dto.MaintenanceRuleResponse;
 import com.medtrack.service.MaintenanceScheduleService;
+import com.medtrack.service.PreventiveMaintenanceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,6 +19,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.medtrack.dto.MaintenanceScheduleAmendmentRequest;
+import com.medtrack.dto.MaintenanceScheduleAmendmentResponse;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -27,11 +33,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/maintenance")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class MaintenanceController {
 
     private final MaintenanceService maintenanceService;
     private final MaintenanceScheduleService maintenanceScheduleService;
+    private final PreventiveMaintenanceService preventiveMaintenanceService;
 
     /**
      * Retrieves an ownership-scoped list of maintenance tasks, with optional pagination.
@@ -207,5 +214,19 @@ public class MaintenanceController {
         if (id == null || id <= 0) {
             throw new IllegalArgumentException("Invalid resource ID.");
         }
+    }
+
+    @PatchMapping("/rules/{id}/status")
+    @PreAuthorize("hasRole('HOSPITAL')")
+    public ResponseEntity<MaintenanceRuleResponse> updateRuleStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody MaintenanceRuleStatusRequest request,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(
+                preventiveMaintenanceService.updateRuleStatus(
+                        id,
+                        request,
+                        authentication));
     }
 }

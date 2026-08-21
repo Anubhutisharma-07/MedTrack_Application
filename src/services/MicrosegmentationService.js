@@ -37,3 +37,33 @@ export const terminateTunnel = async (sessionId) => {
   const response = await API.put(`/api/auth/microsegmentation/tunnels/${sessionId}/terminate`);
   return response.data;
 };
+
+// Real-time Zero-Trust traffic access evaluation
+export const evaluateTrafficAccess = async (data) => {
+  const response = await API.post("/api/auth/microsegmentation/evaluate", data);
+  return response.data;
+};
+
+// Emergency source segment quarantine
+export const quarantineSourceSegment = async (data) => {
+  const response = await API.post("/api/auth/microsegmentation/quarantine", data);
+  return response.data;
+};
+
+// Get Zero-Trust policy violation audit logs
+export const getViolationLogs = async () => {
+  const response = await API.get("/api/auth/microsegmentation/violations");
+  return response.data;
+};
+
+// Get Linux kernel eBPF bytecode compilation matrix simulation
+export const getEbpfMatrix = async () => {
+  const response = await API.get("/api/auth/microsegmentation/ebpf/matrix");
+  return response.data;
+};
+
+// Get Zero-Trust microsegmentation & SDP audit metrics
+export const getAuditMetrics = async () => {
+  const response = await API.get("/api/auth/microsegmentation/metrics");
+  return response.data;
+};

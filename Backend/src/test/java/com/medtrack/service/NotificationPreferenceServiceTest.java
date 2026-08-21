@@ -53,7 +53,7 @@ class NotificationPreferenceServiceTest {
     @Test
     void getPreferences_DefaultsEveryCategoryToNotMuted() {
         when(authentication.getName()).thenReturn(EMAIL);
-        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+        when(userRepository.findByUsername(EMAIL)).thenReturn(Optional.of(user));
         when(preferenceRepository.findByUserId(42L)).thenReturn(List.of());
 
         NotificationPreferenceResponse response = service.getPreferences(authentication);
@@ -65,7 +65,7 @@ class NotificationPreferenceServiceTest {
     @Test
     void getPreferences_ReflectsStoredMuteState() {
         when(authentication.getName()).thenReturn(EMAIL);
-        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+        when(userRepository.findByUsername(EMAIL)).thenReturn(Optional.of(user));
         when(preferenceRepository.findByUserId(42L)).thenReturn(List.of(
                 NotificationPreference.builder()
                         .userId(42L)
@@ -82,7 +82,7 @@ class NotificationPreferenceServiceTest {
     @Test
     void setPreference_CreatesRowWhenNoneExists() {
         when(authentication.getName()).thenReturn(EMAIL);
-        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+        when(userRepository.findByUsername(EMAIL)).thenReturn(Optional.of(user));
         when(preferenceRepository.findByUserIdAndCategory(42L, OperationsEvent.EventCategory.MAINTENANCE))
                 .thenReturn(Optional.empty());
         when(preferenceRepository.findByUserId(42L)).thenReturn(List.of());
@@ -105,7 +105,7 @@ class NotificationPreferenceServiceTest {
                 .muted(true)
                 .build();
         when(authentication.getName()).thenReturn(EMAIL);
-        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+        when(userRepository.findByUsername(EMAIL)).thenReturn(Optional.of(user));
         when(preferenceRepository.findByUserIdAndCategory(42L, OperationsEvent.EventCategory.SLA))
                 .thenReturn(Optional.of(existing));
         when(preferenceRepository.findByUserId(42L)).thenReturn(List.of(existing));

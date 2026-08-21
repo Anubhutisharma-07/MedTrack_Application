@@ -12,10 +12,16 @@ const Icons = {
 };
 
 export default function OrderStatus({ onNavigate, order: initialOrder }) {
-  const [order, setOrder] = useState(initialOrder || null);
-  const [orderIdInput, setOrderIdInput] = useState(initialOrder?.id || "");
-  const [searchId, setSearchId] = useState(initialOrder?.id || "");
-  const [loading, setLoading] = useState(!initialOrder);
+  // The route is parameterised (`orderstatus/:id`), so a deep link arrives as a bare id string,
+  // while older in-app navigation passed the whole order object. Both resolve to the same id, and
+  // the full record is always fetched from the backend.
+  const initialOrderId = typeof initialOrder === "string" ? initialOrder : initialOrder?.id;
+  const hasInitialObject = !!initialOrder && typeof initialOrder === "object";
+
+  const [order, setOrder] = useState(hasInitialObject ? initialOrder : null);
+  const [orderIdInput, setOrderIdInput] = useState(initialOrderId || "");
+  const [searchId, setSearchId] = useState(initialOrderId || "");
+  const [loading, setLoading] = useState(Boolean(initialOrderId));
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState("timeline");

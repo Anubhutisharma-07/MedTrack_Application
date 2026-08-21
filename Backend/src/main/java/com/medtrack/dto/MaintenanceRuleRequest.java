@@ -14,6 +14,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.medtrack.model.MaintenancePolicyStatus;
+
+import java.time.LocalDate;
 
 import static com.medtrack.validation.MaintenanceValidationLimits.SHORT_TEXT_MAX_LENGTH;
 
@@ -31,6 +34,20 @@ public class MaintenanceRuleRequest {
     @NotBlank(message = "Rule name is required")
     @Size(max = SHORT_TEXT_MAX_LENGTH, message = "Rule name must not exceed 255 characters")
     private String name;
+
+    @NotBlank(message = "Policy code is required")
+    @Size(max = SHORT_TEXT_MAX_LENGTH, message = "Policy code must not exceed 255 characters")
+    private String policyCode;
+
+    private MaintenancePolicyStatus status;
+
+    @NotNull(message = "Start date is required")
+    private LocalDate startDate;
+    private Long assignedTechnicianId;
+
+    @Size(max = SHORT_TEXT_MAX_LENGTH,
+            message = "Assigned technician must not exceed 255 characters")
+    private String assignedTechnician;
 
     @Size(max = SHORT_TEXT_MAX_LENGTH, message = "Rule description must not exceed 255 characters")
     private String description;

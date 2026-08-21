@@ -166,3 +166,68 @@ export const downloadDisposalCertificate = async (disposalId) => {
   });
   return response.data;
 };
+
+// ---------------------------------------------------------------------------
+// Facility locations (issue #745)
+// ---------------------------------------------------------------------------
+
+// Nested location tree for the location picker on the add/edit forms and the list filter.
+export const getLocationTree = async () => {
+  const response = await API.get("/api/locations");
+  return response.data;
+};
+
+// Every assignment of one asset to a facility node, newest first.
+export const getEquipmentLocationHistory = async (equipmentId) => {
+  const response = await API.get(`/api/locations/equipment/${equipmentId}/history`);
+  return response.data;
+};
+
+// Moves an asset to a facility node. `effectiveDate` and `notes` are optional.
+export const assignEquipmentToLocation = async (equipmentId, { locationId, effectiveDate = null, notes = null } = {}) => {
+  const response = await API.post(`/api/locations/equipment/${equipmentId}/assign`, {
+    locationId,
+    effectiveDate,
+    notes,
+  });
+  return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// Duplicate detection (issue #746)
+// ---------------------------------------------------------------------------
+
+/**
+ * Entry-time near-match check for the registration and edit forms.
+ *
+ * Every field is optional; only the ones that have a value are sent, so a half-filled form does
+ * not query on empty strings. `excludeId` suppresses the asset's own record while editing.
+ */
+export const checkForDuplicates = async ({ name, model, serialNumber, equipmentCode, excludeId } = {}) => {
+  const query = new URLSearchParams();
+  if (name) query.set("name", name);
+  if (model) query.set("model", model);
+  if (serialNumber) query.set("serialNumber", serialNumber);
+  if (equipmentCode) query.set("equipmentCode", equipmentCode);
+  if (excludeId !== undefined && excludeId !== null) query.set("excludeId", excludeId);
+
+  const qs = query.toString();
+  const response = await API.get(
+    qs ? `/api/equipment/duplicates/check?${qs}` : "/api/equipment/duplicates/check",
+  );
+  return response.data;
+};
+
+// Likely duplicate clusters for the reconciliation view.
+export const getDuplicateGroups = async () => {
+  const response = await API.get("/api/equipment/duplicates");
+  return response.data;
+};
+
+// Confirms a reviewed pair: mergeId is archived and its history moves onto keepId.
+export const mergeDuplicates = async (keepId, mergeId) => {
+  const response = await API.post(
+    `/api/equipment/duplicates/merge?keepId=${keepId}&mergeId=${mergeId}`,
+  );
+  return response.data;
+};

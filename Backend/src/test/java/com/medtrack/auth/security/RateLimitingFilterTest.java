@@ -55,6 +55,8 @@ class RateLimitingFilterTest {
 
     /** Configures small capacities so limits are reachable within a test. */
     private void configure(int authCapacity, int getCapacity, int writeCapacity, String trustedProxies) {
+        ReflectionTestUtils.setField(filter, "enabled", true);
+        
         ReflectionTestUtils.setField(filter, "authCapacity", authCapacity);
         ReflectionTestUtils.setField(filter, "authRefillTokens", authCapacity);
         ReflectionTestUtils.setField(filter, "authRefillDurationStr", "1m");
@@ -66,6 +68,11 @@ class RateLimitingFilterTest {
         ReflectionTestUtils.setField(filter, "writeCapacity", writeCapacity);
         ReflectionTestUtils.setField(filter, "writeRefillTokens", writeCapacity);
         ReflectionTestUtils.setField(filter, "writeRefillDurationStr", "1m");
+
+        ReflectionTestUtils.setField(filter, "aiTechnicianCapacity", 10);
+        ReflectionTestUtils.setField(filter, "aiTechnicianRefillDurationStr", "1m");
+        ReflectionTestUtils.setField(filter, "aiAdminCapacity", 10);
+        ReflectionTestUtils.setField(filter, "aiAdminRefillDurationStr", "1m");
 
         ReflectionTestUtils.setField(filter, "trustedProxiesRaw", trustedProxies);
         ReflectionTestUtils.setField(filter, "maxTrackedClients", 1000);
@@ -158,10 +165,11 @@ class RateLimitingFilterTest {
             filter.doFilter(request("POST", "/api/auth/login", "1.1.1.1", null), response, filterChain);
 
             assertEquals(HttpStatus.TOO_MANY_REQUESTS.value(), response.getStatus());
-            assertTrue(response.getContentType().startsWith("application/json"),
+            assertTrue(response.getContentType().startsWith("application/problem+json"),
                     response.getContentType());
             assertTrue(response.getContentAsString().contains("Too Many Requests"),
                     response.getContentAsString());
+            assertTrue(response.getHeader("Retry-After") != null, "Retry-After header should be present");
         }
     }
 
@@ -338,6 +346,107 @@ class RateLimitingFilterTest {
             assertTrue(filter.trackedClientCount() <= 5,
                     "expected eviction to hold the cache at or below 5, saw "
                             + filter.trackedClientCount());
+        }
+
+        /**
+         * Verifies that initializing {@link RateLimitingFilter} with uninitialized, zero, or negative
+         * capacity fields does not throw {@link IllegalArgumentException}.
+         */
+        @Test
+        @DisplayName("zero or negative capacity defaults safely without throwing exception")
+        void zeroCapacitySanitizesToPositiveDefault() {
+            RateLimitingFilter customFilter = new RateLimitingFilter();
+            ReflectionTestUtils.setField(customFilter, "authCapacity", 0);
+            ReflectionTestUtils.setField(customFilter, "authRefillTokens", 0);
+            ReflectionTestUtils.setField(customFilter, "getCapacity", -5);
+            ReflectionTestUtils.setField(customFilter, "aiTechnicianCapacity", 0);
+            ReflectionTestUtils.setField(customFilter, "aiAdminCapacity", 0);
+            ReflectionTestUtils.setField(customFilter, "authRefillDurationStr", "invalid_duration");
+            ReflectionTestUtils.setField(customFilter, "clientTtlStr", "");
+
+            org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> customFilter.init());
+        }
+
+        /**
+         * Verifies that null, empty, or unparseable duration string properties fall back cleanly
+         * to default duration values during post-construct initialization.
+         */
+        @Test
+        @DisplayName("null or blank duration strings fallback to safe defaults")
+        void nullOrBlankDurationStringsFallbackToSafeDefaults() {
+            RateLimitingFilter customFilter = new RateLimitingFilter();
+            ReflectionTestUtils.setField(customFilter, "authRefillDurationStr", null);
+            ReflectionTestUtils.setField(customFilter, "getRefillDurationStr", "   ");
+            ReflectionTestUtils.setField(customFilter, "writeRefillDurationStr", "invalid");
+            ReflectionTestUtils.setField(customFilter, "aiTechnicianRefillDurationStr", "bad_format");
+            ReflectionTestUtils.setField(customFilter, "aiAdminRefillDurationStr", null);
+
+            org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> customFilter.init());
+            org.junit.jupiter.api.Assertions.assertNotNull(customFilter, "Filter should be instantiated successfully");
+        }
+    }
+
+    @Nested
+    @DisplayName("Metrics tracker operations")
+    class MetricsTrackerTests {
+
+        @Test
+        @DisplayName("increments and resets metrics tracker counters correctly")
+        void metricsTrackerIncrementsAndResetsCounters() {
+            RateLimitingFilter.RateLimitMetricsTracker tracker = new RateLimitingFilter.RateLimitMetricsTracker();
+            assertEquals(0, tracker.getEvaluatedCount());
+            assertEquals(0, tracker.getThrottledCount());
+            assertEquals(0, tracker.getBucketsCreatedCount());
+            assertEquals(0, tracker.getEvictionsCount());
+
+            tracker.incrementEvaluated();
+            tracker.incrementEvaluated();
+            tracker.incrementThrottled();
+            tracker.incrementBucketsCreated();
+            tracker.incrementEvictions();
+
+            assertEquals(2, tracker.getEvaluatedCount());
+            assertEquals(1, tracker.getThrottledCount());
+            assertEquals(1, tracker.getBucketsCreatedCount());
+            assertEquals(1, tracker.getEvictionsCount());
+
+            tracker.reset();
+            assertEquals(0, tracker.getEvaluatedCount());
+            assertEquals(0, tracker.getThrottledCount());
+            assertEquals(0, tracker.getBucketsCreatedCount());
+            assertEquals(0, tracker.getEvictionsCount());
+        }
+
+        @Test
+        @DisplayName("filter tracks evaluated and throttled request counts")
+        void filterTracksEvaluatedAndThrottledRequests() throws Exception {
+            configure(1, 1, 1, "");
+            call("GET", "/api/equipment", "192.0.2.1", null);
+            call("GET", "/api/equipment", "192.0.2.1", null);
+
+            RateLimitingFilter.RateLimitMetricsTracker tracker = filter.getMetricsTracker();
+            assertTrue(tracker.getEvaluatedCount() >= 2, "Should record evaluated requests");
+            assertTrue(tracker.getThrottledCount() >= 1, "Should record throttled request");
+        }
+
+        /**
+         * Verifies that bucket creation and cache eviction counters update accurately
+         * when cache threshold is reached.
+         */
+        @Test
+        @DisplayName("metrics tracker records bucket creation and eviction events")
+        void metricsTrackerRecordsBucketCreationAndEvictionEvents() throws Exception {
+            configure(10, 10, 10, "");
+            ReflectionTestUtils.setField(filter, "maxTrackedClients", 2);
+            ReflectionTestUtils.setField(filter, "clientTtl", Duration.ZERO);
+
+            call("GET", "/api/equipment", "10.0.0.1", null);
+            call("GET", "/api/equipment", "10.0.0.2", null);
+            call("GET", "/api/equipment", "10.0.0.3", null);
+
+            RateLimitingFilter.RateLimitMetricsTracker tracker = filter.getMetricsTracker();
+            assertTrue(tracker.getBucketsCreatedCount() >= 2, "Should count created buckets");
+            assertTrue(tracker.getEvictionsCount() >= 1, "Should count evicted idle buckets");
         }
     }
 }

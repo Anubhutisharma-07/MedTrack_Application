@@ -2,9 +2,11 @@ package com.medtrack.controller;
 
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.EventReadRequest;
 import com.medtrack.dto.OperationsEventResponse;
 import com.medtrack.dto.UnreadCountResponse;
+import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.EventReadReceipt;
 import com.medtrack.model.Hospital;
 import com.medtrack.model.OperationsEvent;
@@ -21,6 +23,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,6 +46,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/events")
 @RequiredArgsConstructor
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class OperationsEventController {
 
     private final OperationsEventRepository eventRepository;
@@ -50,6 +54,7 @@ public class OperationsEventController {
     private final NotificationPreferenceRepository preferenceRepository;
     private final UserRepository userRepository;
     private final HospitalRepository hospitalRepository;
+    private final PaginationConfig paginationConfig;
 
     /**
      * Get paginated event history for the user's hospital.
@@ -62,13 +67,15 @@ public class OperationsEventController {
     public ResponseEntity<Page<OperationsEventResponse>> getEvents(
             @RequestParam(required = false) OperationsEvent.EventCategory category,
             @RequestParam(required = false) Boolean unreadOnly,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             Authentication authentication) {
 
         Long hospitalId = getHospitalId(authentication);
         Long userId = getUserId(authentication);
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Order.desc("createdAt")));
+        int actualPage = page != null ? page : paginationConfig.getDefaultPage();
+        int actualSize = size != null ? size : paginationConfig.getDefaultPageSize();
+        Pageable pageable = PageRequest.of(actualPage, actualSize, Sort.by(Sort.Order.desc("createdAt")));
 
         Set<OperationsEvent.EventCategory> muted = category == null
                 ? preferenceRepository.mutedCategoriesFor(userId)
@@ -238,8 +245,9 @@ public class OperationsEventController {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("An authenticated account is required");
         }
-        String normalizedEmail = authentication.getName().trim().toLowerCase(Locale.ROOT);
-        return userRepository.findByEmail(normalizedEmail)
+        String identifier = authentication.getName().trim();
+        return userRepository.findByUsername(identifier)
+                .or(() -> userRepository.findByEmail(identifier.toLowerCase(Locale.ROOT)))
                 .orElseThrow(() -> new AccessDeniedException("An authenticated account is required"));
     }
 }

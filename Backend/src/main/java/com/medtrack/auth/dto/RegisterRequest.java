@@ -46,6 +46,12 @@ public class RegisterRequest {
     @Schema(description = "Confirmation matching the password field", example = "SecurePass123!", requiredMode = Schema.RequiredMode.REQUIRED)
     private String confirmPassword;
 
-    @Schema(description = "Application access role (HOSPITAL, TECHNICIAN, or SUPPLIER)", example = "HOSPITAL", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+    @Schema(
+            description = "Publicly assignable access role. HOSPITAL accounts require privileged provisioning.",
+            example = "TECHNICIAN",
+            allowableValues = {"TECHNICIAN", "SUPPLIER"},
+            defaultValue = "TECHNICIAN",
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED
+    )
     private String role;
 }

@@ -1,5 +1,6 @@
 package com.medtrack.dto;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -34,6 +35,7 @@ public class StockAdjustmentRequest {
     /**
      * Optional new reorder threshold. When {@code null} the existing threshold is left untouched.
      */
+    @Min(value = 0, message = "Minimum stock cannot be negative")
     private Integer minimumStock;
 
     /**

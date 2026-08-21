@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import com.medtrack.dto.SlaSummaryResponse;
 
 import java.util.List;
 
@@ -34,19 +35,52 @@ public class MaintenanceSlaAlertScheduler {
      */
     @Scheduled(cron = "${app.maintenance.sla.alert.cron:0 0 * * * *}")
     public void runSlaSweep() {
-        log.debug("Running scheduled SLA sweep...");
-        List<Hospital> hospitals = hospitalRepository.findAll();
-        int processed = 0;
+        log.info("Starting scheduled maintenance SLA sweep");
 
-        for (Hospital hospital : hospitals) {
-            try {
-                preventiveMaintenanceService.refreshSlaForHospitalId(hospital.getId());
-                processed++;
-            } catch (RuntimeException exception) {
-                log.warn("Scheduled SLA sweep failed for hospital {}: {}", hospital.getId(), exception.getMessage());
+            List<Hospital> hospitals = hospitalRepository.findAll();
+
+            int processedHospitals = 0;
+            int failedHospitals = 0;
+            long warnings = 0;
+            long breaches = 0;
+            long escalations = 0;
+
+            for (Hospital hospital : hospitals) {
+                if (hospital == null || hospital.getId() == null) {
+                    continue;
+                }
+
+                try {
+                    SlaSummaryResponse summary =
+                            preventiveMaintenanceService.refreshSlaForHospitalId(
+                                    hospital.getId());
+
+                    processedHospitals++;
+
+                    warnings += summary.getWarning();
+                    breaches += summary.getBreached();
+                    escalations += summary.getEscalated();
+
+                } catch (RuntimeException exception) {
+                    failedHospitals++;
+
+                    log.error(
+                            "Scheduled SLA sweep failed for hospital {}",
+                            hospital.getId(),
+                            exception
+                    );
+                }
             }
-        }
 
-        log.info("SLA sweep processed {} of {} hospitals", processed, hospitals.size());
+            log.info(
+                    "Completed scheduled maintenance SLA sweep: " +
+                            "hospitalsProcessed={}, hospitalsFailed={}, " +
+                            "warningTasks={}, breachedTasks={}, escalatedTasks={}",
+                    processedHospitals,
+                    failedHospitals,
+                    warnings,
+                    breaches,
+                    escalations
+            );
     }
 }

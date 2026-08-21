@@ -28,7 +28,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/maintenance/automation")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class PreventiveMaintenanceController {
 
     private final PreventiveMaintenanceService preventiveMaintenanceService;

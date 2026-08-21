@@ -12,6 +12,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -45,9 +47,11 @@ public class FacilityLocation {
     @Column(name = "parent_id")
     private Long parentId;
 
+    @NotBlank(message = "Location name is required")
     @Column(nullable = false, length = 100)
     private String name;
 
+    @NotNull(message = "Location type is required")
     @Enumerated(EnumType.STRING)
     @Column(name = "location_type", nullable = false, length = 30)
     private LocationType locationType;
@@ -57,6 +61,23 @@ public class FacilityLocation {
 
     @Column(name = "created_by", length = 255)
     private String createdBy;
+
+    // ---------------------------------------------------------------------
+    // Geolocation boundary fields (issue #1228)
+    //
+    // Latitude/longitude define the center point of the facility location.
+    // GeofenceRadiusMeters defines the allowed circular boundary around the center.
+    // Equipment telemetry coordinates are validated against this boundary.
+    // ---------------------------------------------------------------------
+
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
+    @Column(name = "geofence_radius_meters")
+    private Integer geofenceRadiusMeters;
 
     @PrePersist
     void prePersist() {

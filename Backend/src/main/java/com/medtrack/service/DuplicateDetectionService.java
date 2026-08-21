@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.medtrack.model.EquipmentStatus;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -36,8 +38,49 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DuplicateDetectionService {
 
+    /**
+     * Every table that points at an equipment record, and how a merge moves its rows onto the
+     * surviving asset.
+     *
+     * <p>Kept as one list rather than a run of inline calls so the set is visible in a single place
+     * and so {@code DuplicateDetectionTest} can assert against it. A table missing from here is not
+     * a cosmetic gap: {@code mergeDuplicates} archives the duplicate, and archived records fall out
+     * of every query through the {@code deleted = false} restriction, so rows left behind become
+     * unreachable from both assets. That is how the whole work-order history of a merged asset came
+     * to disappear once the work-order module was added without this list being extended.</p>
+     *
+     * <p>{@code maintenance_tasks} is handled separately by {@link #reassignTaskMetadata} because it
+     * also carries denormalised copies of the equipment code and name.</p>
+     *
+     * <p>Package-private so the test in this package can check it against the foreign keys the
+     * schema actually declares, which is what turns "someone remembered" into "the build noticed".</p>
+     */
+    static final List<String> CHILD_REASSIGNMENTS = List.of(
+            "UPDATE equipment_lifecycle_actions SET equipment_id = :keep WHERE equipment_id = :merge",
+            "UPDATE equipment_location_history SET equipment_id = :keep WHERE equipment_id = :merge",
+            "UPDATE equipment_disposals SET equipment_id = :keep WHERE equipment_id = :merge",
+            "UPDATE maintenance_work_orders SET equipment_id = :keep WHERE equipment_id = :merge",
+            // A preventive-maintenance rule scoped to one asset would otherwise stay on the
+            // archived duplicate, and the surviving record would quietly stop being scheduled.
+            "UPDATE maintenance_policy_rules SET equipment_record_id = :keep "
+                    + "WHERE equipment_record_id = :merge",
+            "UPDATE equipment_audit SET equipment_id = :keep WHERE equipment_id = :merge",
+            "UPDATE equipment_audit_log SET equipment_id = :keep WHERE equipment_id = :merge",
+            "UPDATE software_telemetry_logs SET equipment_id = :keep WHERE equipment_id = :merge",
+            "UPDATE security_incidents SET equipment_id = :keep WHERE equipment_id = :merge",
+            "UPDATE equipment SET replacement_equipment_id = :keep WHERE replacement_equipment_id = :merge",
+            "UPDATE equipment_lifecycle_actions SET replacement_equipment_id = :keep "
+                    + "WHERE replacement_equipment_id = :merge");
+
     private static final double SERIAL_THRESHOLD = 0.75;
     private static final double CODE_THRESHOLD = 0.75;
+
+    /**
+     * The bar a name/model pair has to clear. Higher than the identifier thresholds because a name
+     * and a model are descriptive rather than unique - plenty of genuinely distinct assets are
+     * close on both - so the evidence has to be stronger before it is called a duplicate. See
+     * {@link #nameModelSimilarity}, which is what this is now actually applied to.
+     */
     private static final double NAME_MODEL_THRESHOLD = 0.8;
     private static final double EXACT_SIMILARITY = 0.999;
 
@@ -47,7 +90,12 @@ public class DuplicateDetectionService {
     private final EntityManager entityManager;
 
     private Hospital getHospitalForUser(String username) {
-        User user = userRepository.findByUsername(username)
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("Username or email is required");
+        }
+        String identifier = username.trim();
+        User user = userRepository.findByUsername(identifier)
+                .or(() -> userRepository.findByEmail(identifier.toLowerCase(java.util.Locale.ROOT)))
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
         return hospitalRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found for user"));
@@ -98,12 +146,10 @@ public class DuplicateDetectionService {
                 matchedOn = "ASSET_CODE";
             }
         }
-        if (!isBlank(name) && !isBlank(existing.getName())) {
-            double sim = StringSimilarity.similarity(name, existing.getName());
-            if (sim > best) {
-                best = sim;
-                matchedOn = "NAME_MODEL";
-            }
+        Double nameModelSimilarity = nameModelSimilarity(name, model, existing);
+        if (nameModelSimilarity != null && nameModelSimilarity > best) {
+            best = nameModelSimilarity;
+            matchedOn = "NAME_MODEL";
         }
         if (best == 0.0 || best < thresholdFor(matchedOn)) {
             return null;
@@ -119,6 +165,42 @@ public class DuplicateDetectionService {
                 .similarity(Math.round(best * 1000.0) / 1000.0)
                 .matchedOn(matchedOn)
                 .build();
+    }
+
+    /**
+     * How alike two assets are on name <em>and</em> model, or {@code null} when the pair cannot be
+     * compared that way at all.
+     *
+     * <p>The rule this replaces scored the name alone while still calling itself {@code NAME_MODEL}
+     * and still applying {@link #NAME_MODEL_THRESHOLD}, a bar chosen for a combined comparison.
+     * {@code model} was taken as a parameter and never read. Hospitals name assets by device type,
+     * so a Hamilton C6 and a Dräger Evita V300 - both named {@code Ventilator}, different serials,
+     * different asset codes, plainly different machines - scored {@code 1.0} and came back marked
+     * {@code exact}. The warning fired on every second infusion pump and defibrillator in the
+     * inventory, and a warning that is usually wrong stops being read, which costs the real
+     * duplicates it exists to catch.</p>
+     *
+     * <p>The score is the <em>lower</em> of the two similarities, not their average. A duplicate is
+     * a pair that matches on both parts: {@code MRI Scanner / Signa HDxt} against
+     * {@code MRI Scaner / Signa HDxt} is a typo and still scores high, while a shared name with an
+     * unrelated model collapses to the model's low score and falls out. Averaging would let a
+     * perfect name carry a mismatched model over the bar, which is the behaviour being fixed.</p>
+     *
+     * <p>{@code null} - no name/model opinion - when either side is missing a name or a model. That
+     * is deliberately the same precondition {@link #findDuplicateGroups} applies when it buckets on
+     * {@code name|model}, so the entry-time warning and the reconciliation list now agree about what
+     * a name/model duplicate is instead of contradicting each other. Assets with no model recorded
+     * are still matched on serial number and asset code, which are the identifiers that actually
+     * identify.</p>
+     */
+    private Double nameModelSimilarity(String name, String model, Equipment existing) {
+        if (isBlank(name) || isBlank(model)
+                || isBlank(existing.getName()) || isBlank(existing.getModel())) {
+            return null;
+        }
+        return Math.min(
+                StringSimilarity.similarity(name, existing.getName()),
+                StringSimilarity.similarity(model, existing.getModel()));
     }
 
     private double thresholdFor(String matchedOn) {
@@ -229,8 +311,9 @@ public class DuplicateDetectionService {
     }
 
     /**
-     * Merges {@code mergeId} into {@code keepId}: unit counts are combined, every history record
-     * (lifecycle actions, location assignments, maintenance tasks, replacement links) is
+     * Merges {@code mergeId} into {@code keepId}: unit counts are combined, missing metadata is
+     * preserved from the duplicate, every history record (lifecycle actions, location assignments,
+     * disposals, maintenance tasks with updated denormalized fields, replacement links) is
      * reassigned to the surviving record, and the duplicate is archived rather than hard-deleted
      * so the audit trail survives.
      */
@@ -245,29 +328,109 @@ public class DuplicateDetectionService {
         Equipment merge = equipmentRepository.findByIdAndHospitalId(mergeId, hospital.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Equipment not found or you don't have access"));
 
+        validateMergeableAssets(keep, merge);
+
         int keepQuantity = keep.getQuantity() == null ? 0 : keep.getQuantity();
-        int mergeQuantity = merge.getQuantity() == null ? 1 : merge.getQuantity();
+        int mergeQuantity = merge.getQuantity() == null ? 0 : merge.getQuantity();
         keep.setQuantity(keepQuantity + mergeQuantity);
 
-        reassign("UPDATE equipment_lifecycle_actions SET equipment_id = :keep WHERE equipment_id = :merge",
-                keepId, mergeId);
-        reassign("UPDATE equipment_location_history SET equipment_id = :keep WHERE equipment_id = :merge",
-                keepId, mergeId);
-        reassign("UPDATE maintenance_tasks SET equipment_record_id = :keep WHERE equipment_record_id = :merge",
-                keepId, mergeId);
-        reassign("UPDATE equipment SET replacement_equipment_id = :keep WHERE replacement_equipment_id = :merge",
-                keepId, mergeId);
-        reassign("UPDATE equipment_lifecycle_actions SET replacement_equipment_id = :keep WHERE replacement_equipment_id = :merge",
-                keepId, mergeId);
+        transferMissingMetadata(keep, merge);
 
-        equipmentRepository.save(keep);
+        for (String statement : CHILD_REASSIGNMENTS) {
+            reassign(statement, keepId, mergeId);
+        }
+        reassignTaskMetadata(keepId, mergeId, keep.getEquipmentCode(), keep.getName());
+        verifyAndAuditReassignments(keepId, mergeId);
+
+        Equipment savedKeep = equipmentRepository.save(keep);
 
         merge.setDeleted(true);
         merge.setDeletedAt(LocalDateTime.now());
         merge.setDeletedBy(username);
         equipmentRepository.save(merge);
 
-        return keep;
+        entityManager.flush();
+        entityManager.clear();
+
+        return equipmentRepository.findById(keepId).orElse(savedKeep);
+    }
+
+    private void validateMergeableAssets(Equipment keep, Equipment merge) {
+        if (Boolean.TRUE.equals(keep.getDeleted()) || Boolean.TRUE.equals(merge.getDeleted())) {
+            throw new IllegalArgumentException("Cannot merge archived or soft-deleted equipment records");
+        }
+        if (isRetiredOrDisposed(keep) || isRetiredOrDisposed(merge)) {
+            throw new IllegalArgumentException("Retired or disposed equipment records cannot be merged");
+        }
+    }
+
+    private boolean isRetiredOrDisposed(Equipment equipment) {
+        return equipment.getStatus() == EquipmentStatus.RETIRED
+                || equipment.getStatus() == EquipmentStatus.DISPOSED;
+    }
+
+    /**
+     * Preserves metadata during a duplicate merge by copying non-null attributes from the duplicate
+     * record onto the surviving record whenever the surviving record lacks those attributes.
+     */
+    private void transferMissingMetadata(Equipment keep, Equipment merge) {
+        if (isBlank(keep.getSerialNumber()) && !isBlank(merge.getSerialNumber())) {
+            keep.setSerialNumber(merge.getSerialNumber().trim());
+        }
+        if (isBlank(keep.getModel()) && !isBlank(merge.getModel())) {
+            keep.setModel(merge.getModel().trim());
+        }
+        if (isBlank(keep.getDepartment()) && !isBlank(merge.getDepartment())) {
+            keep.setDepartment(merge.getDepartment().trim());
+        }
+        if (keep.getCategory() == null && merge.getCategory() != null) {
+            keep.setCategory(merge.getCategory());
+        }
+        if (keep.getPurchaseDate() == null && merge.getPurchaseDate() != null) {
+            keep.setPurchaseDate(merge.getPurchaseDate());
+        }
+        if (keep.getWarrantyExpiry() == null && merge.getWarrantyExpiry() != null) {
+            keep.setWarrantyExpiry(merge.getWarrantyExpiry());
+        }
+        if (keep.getPurchaseCost() == null && merge.getPurchaseCost() != null) {
+            keep.setPurchaseCost(merge.getPurchaseCost());
+        }
+        if (keep.getUsefulLifeYears() == null && merge.getUsefulLifeYears() != null) {
+            keep.setUsefulLifeYears(merge.getUsefulLifeYears());
+        }
+        if (keep.getDepreciationMethod() == null && merge.getDepreciationMethod() != null) {
+            keep.setDepreciationMethod(merge.getDepreciationMethod());
+        }
+        if (isBlank(keep.getWarrantyProvider()) && !isBlank(merge.getWarrantyProvider())) {
+            keep.setWarrantyProvider(merge.getWarrantyProvider().trim());
+        }
+        if (isBlank(keep.getWarrantyContractNumber()) && !isBlank(merge.getWarrantyContractNumber())) {
+            keep.setWarrantyContractNumber(merge.getWarrantyContractNumber().trim());
+        }
+        if (keep.getWarrantyStartDate() == null && merge.getWarrantyStartDate() != null) {
+            keep.setWarrantyStartDate(merge.getWarrantyStartDate());
+        }
+        if (keep.getWarrantyCoverageType() == null && merge.getWarrantyCoverageType() != null) {
+            keep.setWarrantyCoverageType(merge.getWarrantyCoverageType());
+        }
+        if (isBlank(keep.getWarrantyTerms()) && !isBlank(merge.getWarrantyTerms())) {
+            keep.setWarrantyTerms(merge.getWarrantyTerms().trim());
+        }
+        if (keep.getLocation() == null && merge.getLocation() != null) {
+            keep.setLocation(merge.getLocation());
+        }
+        if (isBlank(keep.getCustodian()) && !isBlank(merge.getCustodian())) {
+            keep.setCustodian(merge.getCustodian().trim());
+        }
+        if (isBlank(keep.getRoomLocation()) && !isBlank(merge.getRoomLocation())) {
+            keep.setRoomLocation(merge.getRoomLocation().trim());
+        }
+        if (isBlank(keep.getWardLocation()) && !isBlank(merge.getWardLocation())) {
+            keep.setWardLocation(merge.getWardLocation().trim());
+        }
+        if (keep.getMinimumStock() == null && merge.getMinimumStock() != null) {
+            keep.setMinimumStock(merge.getMinimumStock());
+        }
     }
 
     private void reassign(String sql, Long keepId, Long mergeId) {
@@ -275,6 +438,104 @@ public class DuplicateDetectionService {
                 .setParameter("keep", keepId)
                 .setParameter("merge", mergeId)
                 .executeUpdate();
+    }
+
+    private void reassignTaskMetadata(Long keepId, Long mergeId, String keepCode, String keepName) {
+        entityManager.createNativeQuery(
+                "UPDATE maintenance_tasks SET equipment_record_id = :keep, equipment_id = :keepCode, equipment = :keepName WHERE equipment_record_id = :merge")
+                .setParameter("keep", keepId)
+                .setParameter("keepCode", keepCode != null ? keepCode : "")
+                .setParameter("keepName", keepName != null ? keepName : "")
+                .setParameter("merge", mergeId)
+                .executeUpdate();
+    }
+
+    /**
+     * Verifies that all child table records (telemetry logs, security incidents, equipment status audit logs,
+     * equipment audit records, disposals, lifecycle actions, and work orders) were successfully reassigned
+     * to the surviving equipment record during a duplicate merge.
+     */
+    private void verifyAndAuditReassignments(Long keepId, Long mergeId) {
+        if (keepId == null || mergeId == null) {
+            return;
+        }
+        long telemetryCount = ((Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM software_telemetry_logs WHERE equipment_id = :keep")
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
+
+        long incidentCount = ((Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM security_incidents WHERE equipment_id = :keep")
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
+
+        long statusAuditLogCount = ((Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM equipment_audit_log WHERE equipment_id = :keep")
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
+
+        long auditCount = ((Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM equipment_audit WHERE equipment_id = :keep")
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
+
+        long disposalCount = ((Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM equipment_disposals WHERE equipment_id = :keep")
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
+
+        long lifecycleCount = ((Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM equipment_lifecycle_actions WHERE equipment_id = :keep")
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
+
+        long workOrderCount = ((Number) entityManager.createNativeQuery(
+                "SELECT COUNT(*) FROM maintenance_work_orders WHERE equipment_id = :keep")
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
+
+        if (telemetryCount > 0 || incidentCount > 0 || statusAuditLogCount > 0 || auditCount > 0
+                || disposalCount > 0 || lifecycleCount > 0 || workOrderCount > 0) {
+            org.slf4j.LoggerFactory.getLogger(DuplicateDetectionService.class)
+                    .info("Merged equipment child records for keepId={}, mergeId={}: telemetryLogs={}, "
+                                    + "securityIncidents={}, statusAuditLogs={}, equipmentAudits={}, "
+                                    + "disposals={}, lifecycleActions={}, workOrders={}",
+                            keepId, mergeId, telemetryCount, incidentCount, statusAuditLogCount, auditCount,
+                            disposalCount, lifecycleCount, workOrderCount);
+        }
+    }
+
+    /**
+     * Queries and aggregates counts of all reassigned child records belonging to the surviving equipment record.
+     * Useful for post-merge audit verification and metrics reporting.
+     *
+     * @param keepId the ID of the surviving equipment record
+     * @return map of child table names to their reassigned record count
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Long> getMergedChildRecordCounts(Long keepId) {
+        if (keepId == null) {
+            return Map.of();
+        }
+        Map<String, Long> counts = new LinkedHashMap<>();
+
+        counts.put("software_telemetry_logs", countChildRecords("software_telemetry_logs", "equipment_id", keepId));
+        counts.put("security_incidents", countChildRecords("security_incidents", "equipment_id", keepId));
+        counts.put("equipment_audit_log", countChildRecords("equipment_audit_log", "equipment_id", keepId));
+        counts.put("equipment_audit", countChildRecords("equipment_audit", "equipment_id", keepId));
+        counts.put("equipment_disposals", countChildRecords("equipment_disposals", "equipment_id", keepId));
+        counts.put("equipment_lifecycle_actions", countChildRecords("equipment_lifecycle_actions", "equipment_id", keepId));
+        counts.put("maintenance_work_orders", countChildRecords("maintenance_work_orders", "equipment_id", keepId));
+        counts.put("maintenance_policy_rules", countChildRecords("maintenance_policy_rules", "equipment_record_id", keepId));
+
+        return counts;
+    }
+
+    private long countChildRecords(String table, String column, Long keepId) {
+        String sql = "SELECT COUNT(*) FROM " + table + " WHERE " + column + " = :keep";
+        return ((Number) entityManager.createNativeQuery(sql)
+                .setParameter("keep", keepId)
+                .getSingleResult()).longValue();
     }
 
     private boolean isBlank(String value) {

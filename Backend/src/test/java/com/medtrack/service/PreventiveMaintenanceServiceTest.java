@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -77,6 +78,9 @@ class PreventiveMaintenanceServiceTest {
 
     @Mock
     private EventPublisherService eventPublisherService;
+
+    @Mock
+    private MaintenanceRuleAuditService auditService;
 
     @Mock
     private Authentication authentication;
@@ -221,8 +225,8 @@ class PreventiveMaintenanceServiceTest {
     void monthlyCadenceAdvancesFromThePriorOccurrenceInsteadOfTheWindowStart() {
         LocalDate start = LocalDate.now();
         LocalDate latestDeadline = start.withDayOfMonth(1);
-        LocalDate firstExpected = latestDeadline.with(TemporalAdjusters.firstDayOfNextMonth());
-        LocalDate secondExpected = firstExpected.with(TemporalAdjusters.firstDayOfNextMonth());
+        LocalDate firstExpected = latestDeadline.plusMonths(1);
+        LocalDate secondExpected = firstExpected.plusMonths(1);
         LocalDate end = secondExpected.plusDays(1);
         weeklyRule.setFrequency(RecurrenceFrequency.MONTHLY);
         when(ruleRepository.findByIdAndHospitalId(weeklyRule.getId(), hospital.getId()))
@@ -573,6 +577,150 @@ class PreventiveMaintenanceServiceTest {
         assertThrows(
                 ResourceNotFoundException.class,
                 () -> service.getRule(999L, authentication));
+    }
+
+    @Test
+    void deactivateRulesForDecommissionedEquipment_WithActiveRules_DeactivatesAndLogsAudit() {
+        MaintenancePolicyRule activeRule = MaintenancePolicyRule.builder()
+                .id(101L)
+                .hospitalId(hospital.getId())
+                .equipmentRecordId(10L)
+                .ruleScope(MaintenanceRuleScope.INDIVIDUAL_EQUIPMENT)
+                .active(true)
+                .status(com.medtrack.model.MaintenancePolicyStatus.ACTIVE)
+                .name("Monthly Ventilator Check")
+                .build();
+
+        when(ruleRepository.findByHospitalIdAndEquipmentRecordIdAndActiveTrue(hospital.getId(), 10L))
+                .thenReturn(List.of(activeRule));
+        when(ruleRepository.save(any(MaintenancePolicyRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<MaintenancePolicyRule> result = service.deactivateRulesForDecommissionedEquipment(
+                10L, hospital.getId(), "tech@medtrack.com");
+
+        assertEquals(1, result.size());
+        assertFalse(result.get(0).getActive());
+        assertEquals(com.medtrack.model.MaintenancePolicyStatus.ARCHIVED, result.get(0).getStatus());
+
+        verify(auditService).record(
+                eq(hospital.getId()),
+                eq(101L),
+                eq(com.medtrack.model.MaintenanceRuleAuditAction.DEACTIVATED),
+                eq(com.medtrack.model.MaintenancePolicyStatus.ACTIVE),
+                eq(com.medtrack.model.MaintenancePolicyStatus.ARCHIVED),
+                eq("tech@medtrack.com"),
+                org.mockito.ArgumentMatchers.contains("Equipment ID: 10")
+        );
+    }
+
+    @Test
+    void deactivateRulesForDecommissionedEquipment_WithNoActiveRules_ReturnsEmptyList() {
+        when(ruleRepository.findByHospitalIdAndEquipmentRecordIdAndActiveTrue(hospital.getId(), 10L))
+                .thenReturn(List.of());
+
+        List<MaintenancePolicyRule> result = service.deactivateRulesForDecommissionedEquipment(
+                10L, hospital.getId(), "tech@medtrack.com");
+
+        assertTrue(result.isEmpty());
+        verify(ruleRepository, never()).save(any());
+        verify(auditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void deactivateRulesForDecommissionedEquipment_WithNullParams_ReturnsEmptyList() {
+        List<MaintenancePolicyRule> result1 = service.deactivateRulesForDecommissionedEquipment(null, hospital.getId(), "tech@medtrack.com");
+        List<MaintenancePolicyRule> result2 = service.deactivateRulesForDecommissionedEquipment(10L, null, "tech@medtrack.com");
+
+        assertTrue(result1.isEmpty());
+        assertTrue(result2.isEmpty());
+        verify(ruleRepository, never()).findByHospitalIdAndEquipmentRecordIdAndActiveTrue(any(), any());
+    }
+
+    @Test
+    void deactivateRulesForDecommissionedEquipment_WithBlankActor_UsesSystemFallback() {
+        MaintenancePolicyRule rule = MaintenancePolicyRule.builder()
+                .id(202L)
+                .hospitalId(hospital.getId())
+                .equipmentRecordId(20L)
+                .ruleScope(MaintenanceRuleScope.INDIVIDUAL_EQUIPMENT)
+                .active(true)
+                .status(com.medtrack.model.MaintenancePolicyStatus.ACTIVE)
+                .build();
+
+        when(ruleRepository.findByHospitalIdAndEquipmentRecordIdAndActiveTrue(hospital.getId(), 20L))
+                .thenReturn(List.of(rule));
+        when(ruleRepository.save(any(MaintenancePolicyRule.class)))
+                .thenAnswer(i -> i.getArgument(0));
+
+        List<MaintenancePolicyRule> result = service.deactivateRulesForDecommissionedEquipment(
+                20L, hospital.getId(), "   ");
+
+        assertEquals(1, result.size());
+        verify(auditService).record(
+                eq(hospital.getId()),
+                eq(202L),
+                eq(com.medtrack.model.MaintenanceRuleAuditAction.DEACTIVATED),
+                eq(com.medtrack.model.MaintenancePolicyStatus.ACTIVE),
+                eq(com.medtrack.model.MaintenancePolicyStatus.ARCHIVED),
+                eq("SYSTEM"),
+                org.mockito.ArgumentMatchers.contains("Equipment ID: 20")
+        );
+    }
+
+    @Test
+    void deactivateRulesForDecommissionedEquipment_DeactivatesMultipleRulesSequentially() {
+        MaintenancePolicyRule ruleA = MaintenancePolicyRule.builder()
+                .id(301L)
+                .hospitalId(hospital.getId())
+                .equipmentRecordId(30L)
+                .ruleScope(MaintenanceRuleScope.INDIVIDUAL_EQUIPMENT)
+                .active(true)
+                .status(com.medtrack.model.MaintenancePolicyStatus.ACTIVE)
+                .build();
+
+        MaintenancePolicyRule ruleB = MaintenancePolicyRule.builder()
+                .id(302L)
+                .hospitalId(hospital.getId())
+                .equipmentRecordId(30L)
+                .ruleScope(MaintenanceRuleScope.INDIVIDUAL_EQUIPMENT)
+                .active(true)
+                .status(com.medtrack.model.MaintenancePolicyStatus.PAUSED)
+                .build();
+
+        when(ruleRepository.findByHospitalIdAndEquipmentRecordIdAndActiveTrue(hospital.getId(), 30L))
+                .thenReturn(List.of(ruleA, ruleB));
+        when(ruleRepository.save(any(MaintenancePolicyRule.class)))
+                .thenAnswer(i -> i.getArgument(0));
+
+        List<MaintenancePolicyRule> result = service.deactivateRulesForDecommissionedEquipment(
+                30L, hospital.getId(), "admin@medtrack.com");
+
+        assertEquals(2, result.size());
+        assertFalse(result.get(0).getActive());
+        assertFalse(result.get(1).getActive());
+        assertEquals(com.medtrack.model.MaintenancePolicyStatus.ARCHIVED, result.get(0).getStatus());
+        assertEquals(com.medtrack.model.MaintenancePolicyStatus.ARCHIVED, result.get(1).getStatus());
+
+        verify(auditService).record(
+                eq(hospital.getId()),
+                eq(301L),
+                eq(com.medtrack.model.MaintenanceRuleAuditAction.DEACTIVATED),
+                eq(com.medtrack.model.MaintenancePolicyStatus.ACTIVE),
+                eq(com.medtrack.model.MaintenancePolicyStatus.ARCHIVED),
+                eq("admin@medtrack.com"),
+                org.mockito.ArgumentMatchers.contains("Equipment ID: 30")
+        );
+
+        verify(auditService).record(
+                eq(hospital.getId()),
+                eq(302L),
+                eq(com.medtrack.model.MaintenanceRuleAuditAction.DEACTIVATED),
+                eq(com.medtrack.model.MaintenancePolicyStatus.PAUSED),
+                eq(com.medtrack.model.MaintenancePolicyStatus.ARCHIVED),
+                eq("admin@medtrack.com"),
+                org.mockito.ArgumentMatchers.contains("Equipment ID: 30")
+        );
     }
 
     private MaintenanceTaskRepository.GeneratedOccurrence occurrence(

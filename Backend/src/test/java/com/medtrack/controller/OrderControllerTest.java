@@ -53,8 +53,12 @@ class OrderControllerTest {
 
     @BeforeEach
     void setUp() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
         mockMvc = MockMvcBuilders.standaloneSetup(orderController)
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(mapper))
+                .setCustomArgumentResolvers(new org.springframework.data.web.PageableHandlerMethodArgumentResolver())
                 .build();
     }
 
@@ -143,5 +147,32 @@ class OrderControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getAllOrders_InvalidPageSize_ReturnsBadRequest() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/orders")
+                        .principal(hospitalUser)
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getAllOrders_InvalidSortProperty_ReturnsBadRequest() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/orders")
+                        .principal(hospitalUser)
+                        .param("sort", "invalidField,asc"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getAllOrders_ValidSortProperty_ReturnsOk() throws Exception {
+        when(orderService.getAllOrders(any(), any())).thenReturn(org.springframework.data.domain.Page.empty());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/orders")
+                        .principal(hospitalUser)
+                        .param("sort", "status,desc")
+                        .param("status", "PENDING"))
+                .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
+                .andExpect(status().isOk());
     }
 }

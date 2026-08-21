@@ -19,9 +19,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import org.springframework.data.domain.PageRequest;
 
 @Service
 @RequiredArgsConstructor
@@ -33,8 +33,11 @@ public class AnalyticsService {
     private final HospitalRepository hospitalRepository;
 
     public HospitalAnalyticsDto getHospitalAnalytics(Long hospitalId) {
-        Hospital hospital = hospitalRepository.findById(hospitalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hospital not found with id: " + hospitalId));
+        // Existence guard: every figure below is keyed on the id, so an unknown hospital has to be
+        // reported here rather than silently returning a dashboard full of zeroes.
+        if (!hospitalRepository.existsById(hospitalId)) {
+            throw new ResourceNotFoundException("Hospital not found with id: " + hospitalId);
+        }
 
         // 1. Downtime Percentage — database-level aggregation
         long totalEquipment = equipmentRepository.countByHospitalId(hospitalId);
@@ -44,11 +47,16 @@ public class AnalyticsService {
                 ? (underMaintenanceCount * 100.0) / totalEquipment
                 : 0.0;
 
-        // 2. Upcoming Warranty Expirations (within next 30 days) — database-level
+        // 2. Upcoming Warranty Expirations (within next 30 days) — database-level.
+        //
+        // Retired and disposed assets are excluded (issue #943). Their warranty date is historical
+        // record: the device has left the estate and the cover cannot be renewed, so counting it
+        // here overstates the work in front of the team and puts this tile out of step with the
+        // warranty-expiry alert feed, which applies the same rule.
         LocalDate today = LocalDate.now();
         LocalDate limit = today.plusDays(30);
-        long upcomingWarrantyCount = equipmentRepository.countByHospitalIdAndWarrantyExpiryBetween(
-                hospitalId, today, limit);
+        long upcomingWarrantyCount = equipmentRepository.countAlertableByHospitalIdAndWarrantyExpiryBetween(
+                hospitalId, today, limit, EquipmentStatus.DECOMMISSIONED);
 
         // 3. Maintenance SLA compliance — load only measurable completed tasks
         List<MaintenanceTask> measurableTasks = taskRepository.findCompletedTasksWithTimestamps(
@@ -70,13 +78,17 @@ public class AnalyticsService {
                 hospitalId, MaintenanceStatus.COMPLETED, "Critical");
 
         // 5. Total Spend & Category Spend — DB-level filtered orders + lightweight category mapping
-        String hospitalName = hospital.getName();
-        BigDecimal totalSpend = orderRepository.sumTotalCostByHospitalAndShippingStatus(
-                hospitalName, "Delivered");
+        //
+        // Matched on the hospital id rather than on the profile name. EquipmentOrder.hospital is
+        // free text and the two flows that create orders label it differently - placeOrder writes
+        // the user's organisation, acceptQuote writes the profile name - so filtering on the name
+        // alone counted only whichever half happened to match.
+        BigDecimal totalSpend = orderRepository.sumTotalCostByHospitalIdAndShippingStatus(
+                hospitalId, "Delivered");
         if (totalSpend == null) totalSpend = BigDecimal.ZERO;
 
-        List<EquipmentOrder> deliveredOrders = orderRepository.findByHospitalAndShippingStatus(
-                hospitalName, "Delivered");
+        List<EquipmentOrder> deliveredOrders = orderRepository.findByHospitalIdAndShippingStatus(
+                hospitalId, "Delivered");
 
         List<Object[]> nameCategoryPairs = equipmentRepository.findNameAndCategoryByHospitalId(hospitalId);
         Map<String, String> equipmentCategoryMap = new HashMap<>();
@@ -138,12 +150,26 @@ public class AnalyticsService {
                 .build();
     }
 
+    /**
+     * Scores one asset's risk of failure out of 100 across four factors: age against its useful
+     * life (40), how often it has needed work (30), how long since it last had any (20) and how much
+     * scheduled work is overdue on it (10).
+     *
+     * <p>The inputs are repository aggregates rather than a page of task entities. The method used
+     * to load up to a thousand rows to answer "are there more than five, and which is the newest",
+     * and it took the newest with {@code Comparator.comparing(MaintenanceTask::getCompletedAt)} -
+     * which throws on a task that reached {@code COMPLETED} without a completion timestamp. Those
+     * exist, which is why the sibling query {@code findCompletedTasksWithTimestamps} has to spell
+     * out {@code completed_at IS NOT NULL}, and one of them turned this endpoint into a 500 for
+     * that asset.</p>
+     */
     public EquipmentFailureRiskDto predictFailureRisk(Long equipmentId, Long hospitalId) {
         Equipment equipment = equipmentRepository.findByIdAndHospitalId(equipmentId, hospitalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Equipment not found"));
 
-        List<MaintenanceTask> completedTasks = taskRepository.findByHospitalIdWithFilters(
-                hospitalId, MaintenanceStatus.COMPLETED, equipment.getEquipmentCode(), PageRequest.of(0, 1000)).getContent();
+        String equipmentCode = equipment.getEquipmentCode();
+        long completedTaskCount = taskRepository.countByHospitalIdAndEquipmentCodeAndStatus(
+                hospitalId, equipmentCode, MaintenanceStatus.COMPLETED);
 
         int score = 0; // Risk score (0 to 100+)
         LocalDate now = LocalDate.now();
@@ -165,38 +191,48 @@ public class AnalyticsService {
         }
 
         // 2. Usage / Maintenance Frequency Factor (max 30 pts)
-        if (completedTasks.size() > 5) {
+        if (completedTaskCount > 5) {
             score += 30;
-        } else if (completedTasks.size() > 3) {
+        } else if (completedTaskCount > 3) {
             score += 20;
-        } else if (completedTasks.size() > 0) {
+        } else if (completedTaskCount > 0) {
             score += 10;
         }
 
         // 3. Last Maintenance Recency (max 20 pts)
-        if (!completedTasks.isEmpty()) {
-            MaintenanceTask lastTask = completedTasks.stream()
-                    .max(Comparator.comparing(MaintenanceTask::getCompletedAt))
-                    .orElse(null);
-            if (lastTask != null) {
-                long daysSinceMaintenance = ChronoUnit.DAYS.between(lastTask.getCompletedAt().toLocalDate(), now);
-                if (daysSinceMaintenance > 365) {
-                    score += 20;
-                } else if (daysSinceMaintenance > 180) {
-                    score += 10;
-                }
+        //
+        // An asset whose entire history lacks completion timestamps is treated the same as one with
+        // no history: there is no recency signal either way, and the alternative - reading a null
+        // timestamp as a date - is what made this method throw.
+        Optional<LocalDateTime> lastCompletion =
+                taskRepository.findLastCompletionForEquipment(hospitalId, equipmentCode);
+        if (lastCompletion.isPresent()) {
+            long daysSinceMaintenance = ChronoUnit.DAYS.between(lastCompletion.get().toLocalDate(), now);
+            if (daysSinceMaintenance > 365) {
+                score += 20;
+            } else if (daysSinceMaintenance > 180) {
+                score += 10;
             }
         } else {
-            score += 20; // No maintenance history
+            score += 20; // No usable maintenance history
         }
 
         // 4. Overdue Maintenance Penalty (max 10 pts)
-        long overdueTasks = taskRepository.countByHospitalIdAndStatusNotAndPriority(hospitalId, MaintenanceStatus.COMPLETED, "Critical");
-        // Actually, just checking if there is any scheduled task that is overdue for THIS equipment would be better,
-        // but we'll add a flat 10 pts if status is UNDER_MAINTENANCE for now.
+        //
+        // Work that was scheduled on this asset and has not been done is the strongest single
+        // signal of impending failure, and until now it did not reach the score at all: the count
+        // that stood here was hospital-wide, filtered to "Critical" priority, and assigned to a
+        // local variable that was never read. The factor measured whether the asset happened to be
+        // in the shop, so an asset three months past three deadlines scored exactly like one with
+        // nothing outstanding.
+        long overdueTaskCount = taskRepository.countOverdueForEquipment(hospitalId, equipmentCode, now);
+        int overdueScore = (int) Math.min(overdueTaskCount * 5L, 10L);
         if (equipment.getStatus() == EquipmentStatus.UNDER_MAINTENANCE) {
-            score += 10;
+            // Being on a workbench right now is a real signal, but it shares this factor's ceiling
+            // with the overdue work the factor is named after rather than stacking on top of it.
+            overdueScore = Math.min(overdueScore + 5, 10);
         }
+        score += overdueScore;
 
         int failureProbability = Math.min(score, 100);
         String riskTier = "LOW";

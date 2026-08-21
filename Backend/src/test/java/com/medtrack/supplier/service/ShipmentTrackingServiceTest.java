@@ -36,11 +36,29 @@ public class ShipmentTrackingServiceTest {
     @Mock
     private EquipmentOrderRepository orderRepository;
 
+    /**
+     * Left unstubbed in most tests: Mockito returns an empty list, which is what an order that never
+     * went through the procurement flow looks like, and those orders stay claimable by any supplier.
+     * {@link ShipmentOrderOwnershipTest} covers the awarded case.
+     */
+    @Mock
+    private com.medtrack.repository.SupplierQuoteRepository supplierQuoteRepository;
+
     @Mock
     private SupplierAccessGuard supplierAccessGuard;
 
     @org.mockito.Spy
     private com.medtrack.supplier.validation.ShipmentRequestValidator validator = new com.medtrack.supplier.validation.ShipmentRequestValidator();
+
+    /**
+     * A real orchestrator over a real validator, so the transition rules under test are the ones
+     * that run in production. Only validateStateTransition is exercised here and it touches none of
+     * the repositories, so those are left unset.
+     */
+    @org.mockito.Spy
+    private com.medtrack.supplier.workflow.ShipmentWorkflowOrchestrator orchestrator =
+            new com.medtrack.supplier.workflow.ShipmentWorkflowOrchestrator(
+                    new com.medtrack.supplier.workflow.WorkflowValidator(), null, null, null);
 
     @InjectMocks
     private ShipmentTrackingService shipmentTrackingService;
@@ -218,10 +236,12 @@ public class ShipmentTrackingServiceTest {
                 .supplierNotes("Handed to carrier")
                 .build();
 
+        // The shipment, not just the order, has to be CONFIRMED before it can ship:
+        // WorkflowValidator only allows PENDING -> CONFIRMED -> SHIPPED -> DELIVERED.
         ShipmentTracking shipment = ShipmentTracking.builder()
                 .id(5L)
                 .orderId(1L)
-                .shipmentStatus(ShipmentStatus.PENDING)
+                .shipmentStatus(ShipmentStatus.CONFIRMED)
                 .build();
 
         EquipmentOrder order = EquipmentOrder.builder()

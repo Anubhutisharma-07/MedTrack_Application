@@ -94,9 +94,54 @@ const MOCK_CONSENT_HISTORY = [
   { id: "LOG-CON-11239", date: "2026-07-16", framework: "GDPR (Opt-in)", action: "Rejected All Optional", essential: true, functional: false, performance: false, targeting: false }
 ];
 
+/**
+ * The accordion content for the "Cookie Policy FAQ" section.
+ *
+ * The section was written and rendered without this list ever being declared, so the page threw
+ * `ReferenceError: STATUTE_FAQS is not defined` on its first render. It was invisible because the
+ * page is superseded by CookieConsentPage and reaches nobody: unrouted, imported by nothing, and
+ * therefore never compiled into the bundle for ESLint to complain about.
+ *
+ * The three entries answer the three questions the section's own intro promises - commercial data
+ * definitions, sensitive geolocation limits, and employer policy limits.
+ */
+const STATUTE_FAQS = [
+  {
+    q: "What counts as \"selling\" or \"sharing\" personal information under the CCPA/CPRA?",
+    a: "Under the CPRA, \"sale\" covers disclosing personal information to a third party for monetary "
+      + "or other valuable consideration, and \"sharing\" covers disclosure for cross-context "
+      + "behavioural advertising even where no money changes hands. MedTrack does not sell equipment "
+      + "or maintenance records. The only category that can meet the \"sharing\" definition is the "
+      + "targeting cookie set, which is off unless you switch it on above, and which the Do Not Sell "
+      + "or Share request turns off permanently for this browser.",
+  },
+  {
+    q: "How is sensitive geolocation handled, and can I opt out of it separately?",
+    a: "Precise geolocation - a radius finer than 1,850 metres - is treated as sensitive personal "
+      + "information and is collected only where an asset's own telemetry requires it, never from "
+      + "your browser for analytics. Coarse region, derived from the request IP and discarded after "
+      + "aggregation, is used to route you to the nearest service region. Switching off performance "
+      + "cookies stops the coarse lookup; the asset telemetry is processed under the hospital's "
+      + "service agreement rather than under cookie consent, so it is not affected by these toggles.",
+  },
+  {
+    q: "My employer administers this account. What can they see, and what can I still control?",
+    a: "A hospital administrator sees your role, the consoles you opened and the actions you took "
+      + "against equipment records - that is audit data the hospital is required to retain, and "
+      + "withdrawing cookie consent does not remove it. What stays yours is everything in the "
+      + "switchboard above: functional, performance and targeting cookies are per-browser and per-"
+      + "person, your administrator cannot set them on your behalf, and the consent ledger below "
+      + "records every change with the framework it was made under.",
+  },
+];
+
 export default function CookiePage() {
   // Regulatory Mode State
   const [legalFramework, setLegalFramework] = useState("GDPR"); // GDPR or CCPA
+
+  // Which FAQ row is open, or null for all collapsed. Declared here rather than inside the section
+  // because the accordion is single-open: expanding one row has to collapse the others.
+  const [expandedFaqIdx, setExpandedFaqIdx] = useState(null);
 
   // Helper to read initial stored consent
   const getInitialConsentState = () => {
