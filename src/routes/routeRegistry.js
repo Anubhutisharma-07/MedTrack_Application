@@ -85,6 +85,7 @@ const IcuVitalsTelemetryHubPage = lazy(() => import("../pages/telemetry/IcuVital
 const RadiologyImagingHub = lazy(() => import("../pages/radiology/RadiologyImagingHub"));
 const SterileProcessingHub = lazy(() => import("../pages/sterile/SterileProcessingHub"));
 const IcuTelemetryHub = lazy(() => import("../pages/icu/IcuTelemetryHub"));
+const RespiratoryVentilatorFleetHub = lazy(() => import("../pages/respiratory/RespiratoryVentilatorFleetHub"));
 const DialysisRenalHub = lazy(() => import("../pages/renal/DialysisRenalHub"));
 const NephrologyCrrtStationPage = lazy(() => import("../pages/renal/NephrologyCrrtStationPage"));
 const PharmacySupplyHub = lazy(() => import("../pages/pharmacy/PharmacySupplyHub"));
@@ -282,6 +283,7 @@ export const ROUTES = [
 
   // --- clinical / operational hub consoles --------------------------------------
   { page: "icu-telemetry", slugs: ["icu-telemetry", "icu"], component: IcuTelemetryHub, access: AUTHENTICATED },
+  { page: "respiratory-ventilator", slugs: ["respiratory-ventilator", "ventilator-fleet", "respiratory"], component: RespiratoryVentilatorFleetHub, access: AUTHENTICATED },
   { page: "icu-vitals-telemetry", slugs: ["icu-vitals-telemetry", "bedside-telemetry", "icu-vitals", "vitals-telemetry"], component: IcuVitalsTelemetryHubPage, access: AUTHENTICATED },
   { page: "clinical-ai", slugs: ["clinical-ai", "biomedical-ai"], component: ClinicalAIHub, access: AUTHENTICATED },
   { page: "biomedical-ai-governance", slugs: ["biomedical-ai-governance", "ai-governance"], component: BiomedicalAiGovernancePage, access: AUTHENTICATED },
