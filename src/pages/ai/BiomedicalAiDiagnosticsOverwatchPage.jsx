@@ -1,1026 +1,871 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Brain,
   Activity,
-  Cpu,
-  Eye,
-  FileText,
-  Search,
-  RefreshCw,
-  Zap,
-  ShieldCheck,
-  CheckCircle2,
-  X,
-  Sliders,
-  Sparkles,
-  BarChart3,
-  Layers,
-  Server,
-  AlertTriangle,
-  Microscope,
-  Stethoscope,
-  HeartPulse,
-  Dna,
-  FileCheck,
-  Globe,
-  Radio,
-  Flame,
-  Maximize2,
-  Clock,
-  Terminal,
-  Share2,
-  Award,
-  BookOpen,
-  SlidersHorizontal,
-  ChevronRight,
+  Heart,
   ShieldAlert,
-  Database,
-  Crosshair
+  AlertTriangle,
+  Zap,
+  Gauge,
+  Sliders,
+  FileText,
+  Download,
+  Search,
+  Filter,
+  CheckCircle2,
+  Clock,
+  User,
+  Users,
+  Eye,
+  Layers,
+  ChevronRight,
+  Stethoscope,
+  Siren,
+  X,
+  Plus,
+  Play,
+  Pause,
+  SlidersHorizontal,
+  Flame,
+  ShieldCheck,
+  Award,
+  Cpu,
+  ArrowUpRight,
+  ArrowDownRight,
+  Maximize2,
+  Sparkles,
+  Network,
+  Binary,
+  Microscope,
+  Radar,
+  Radio,
+  RefreshCw
 } from "lucide-react";
+import { downloadCsv } from "../../utils/csv";
+import { useKindToasts, KindToastTray } from "../../components/common/HubToasts";
+import { DetailRow as Row, AlertStatCard as StatCard, MiniStat as Vital } from "../../components/common/HubCards";
 
-/**
- * BiomedicalAiDiagnosticsOverwatchPage Component
- *
- * High-Assurance Enterprise Biomedical AI Diagnostics & Clinical Overwatch Command Center.
- * Architected with 13 Advanced Clinical AI Subsystems:
- * 1. Radiological DICOM 3D Neural Inference Matrix
- * 2. Histopathology Digital Whole-Slide Imaging (WSI) Classifier
- * 3. Genomic Sequencing & Precision Oncology Workbench
- * 4. Cardiovascular 12-Lead ECG Deep Learning Engine
- * 5. Neurological Continuous EEG & Ischemia Overwatch
- * 6. Ophthalmic OCT Retinal Layer AI Scanner
- * 7. Dermatological Melanoma Multispectral Classifier
- * 8. Pharmacogenomic CYP450 Drug Response Simulator
- * 9. Clinical Natural Language Processing (NLP) Entity Extractor
- * 10. Explainable AI (XAI) Grad-CAM Feature Attribution Engine
- * 11. Federated Learning Privacy-Preserving Mesh Node
- * 12. FDA SaMD Model Drift & Bias Audit Ledger
- * 13. Real-Time Clinical Decision Support System (CDSS) Advisory
- */
+const SEED_BIOAI_CASES = [
+  {
+    id: "AI-DIAG-901",
+    name: "Eleanor Whitmore",
+    age: 62,
+    gender: "Female",
+    bed: "ICU-STEP-01",
+    primaryComplaint: "Post-Operative Acute Sepsis / Early Septic Shock Prediction",
+    aiModel: "Bio-MedCLIP Transformer Ensemble v4.2",
+    compositeRiskScore: 0.88,
+    predictedOnsetHours: 1.5,
+    confidenceInterval: "95% CI 0.82 - 0.94",
+    brierScore: 0.042,
+    preTestProb: 0.15,
+    postTestProb: 0.89,
+    news2Score: 8,
+    lactate: 3.4,
+    hr: 124,
+    map: 62,
+    rr: 26,
+    spo2: 92,
+    wbc: 18.5,
+    crp: 145,
+    shapValues: [
+      { feature: "Heart Rate Variability (HRV Entropy Decay)", impact: "+0.34", direction: "Risk Escalation" },
+      { feature: "Microvascular Perfusion Index & Serum Lactate", impact: "+0.28", direction: "Hypoperfusion" },
+      { feature: "Respiratory Rate vs. EtCO2 Gradient", impact: "+0.18", direction: "Compensatory Tachypnea" },
+      { feature: "Urine Output Rate Slump", impact: "+0.08", direction: "Renal Stun" }
+    ],
+    fdaClassification: "FDA De Novo Class II SaMD (DEN220045)",
+    clinicalDecisionSupport: "Sepsis Early Intervention Trigger: Dispatched 1-Hour Sepsis Bundle (Blood Cultures x2, Lactate, IV Plasmalyte 30 mL/kg, Cefepime 2g IV).",
+    status: "CRITICAL_ALERT",
+    attendingPhysician: "Dr. Evelyn Ross, MD (Intensive Care & Clinical AI)",
+    timestamp: "2026-08-20 02:45",
+    alerts: [
+      "AI Predictive Horizon: 88% probability of septic shock collapse within 90 minutes",
+      "Model Uncertainty Guard: Low epistemic variance across 10-fold Monte Carlo ensemble"
+    ]
+  },
+  {
+    id: "AI-DIAG-902",
+    name: "Arthur Pendelton",
+    age: 74,
+    gender: "Male",
+    bed: "ICU-CCU-03",
+    primaryComplaint: "Subclinical Malignant Ventricular Arrhythmia (VT/VF) Forecast",
+    aiModel: "NeuroCardio ECG-WaveNet v3.0",
+    compositeRiskScore: 0.79,
+    predictedOnsetHours: 0.8,
+    confidenceInterval: "95% CI 0.73 - 0.85",
+    brierScore: 0.038,
+    preTestProb: 0.10,
+    postTestProb: 0.81,
+    news2Score: 6,
+    lactate: 1.8,
+    hr: 98,
+    map: 74,
+    rr: 20,
+    spo2: 96,
+    wbc: 9.2,
+    crp: 22,
+    shapValues: [
+      { feature: "QTc Dispersion & T-Wave Alternans Micro-Voltage", impact: "+0.41", direction: "Repolarization Instability" },
+      { feature: "Early Ejection Fraction Strain Decay", impact: "+0.22", direction: "Ischemic Substrate" },
+      { feature: "Serum Potassium Gradient", impact: "+0.16", direction: "Electrolyte Trigger" }
+    ],
+    fdaClassification: "FDA 510(k) Cleared (K213490)",
+    clinicalDecisionSupport: "Automated Defibrillator Pad Check Recommended. Dispatched IV Magnesium Sulfate 2g + Amiodarone bolus standby.",
+    status: "CRITICAL_ALERT",
+    attendingPhysician: "Dr. Marcus Vance, MD (Cardiology & Electrophysiology)",
+    timestamp: "2026-08-20 03:10",
+    alerts: [
+      "Micro-T-wave alternans detected on continuous vectorcardiography",
+      "Corrected QT interval prolonged to 512 ms: high torsadogenic liability"
+    ]
+  },
+  {
+    id: "AI-DIAG-903",
+    name: "Chloe Zhao",
+    age: 48,
+    gender: "Female",
+    bed: "ICU-NEURO-02",
+    primaryComplaint: "Intracranial Pressure (ICP) Surge & Brain Herniation Warning",
+    aiModel: "DeepNeuro Pupillometry & Transcranial Doppler AI v2.5",
+    compositeRiskScore: 0.64,
+    predictedOnsetHours: 3.2,
+    confidenceInterval: "95% CI 0.55 - 0.72",
+    brierScore: 0.055,
+    preTestProb: 0.20,
+    postTestProb: 0.67,
+    news2Score: 5,
+    lactate: 1.4,
+    hr: 58,
+    map: 108,
+    rr: 14,
+    spo2: 99,
+    wbc: 11.0,
+    crp: 35,
+    shapValues: [
+      { feature: "Neurological Pupil Index Velocity Decay", impact: "+0.35", direction: "Brainstem Compression" },
+      { feature: "Transcranial Pulsatility Index", impact: "+0.25", direction: "Cerebral Vasospasm" },
+      { feature: "MAP vs. ICP Waveform Compliance Coupling", impact: "+0.04", direction: "Loss of Autoregulation" }
+    ],
+    fdaClassification: "FDA Breakthrough Device Designation",
+    clinicalDecisionSupport: "Elevate head of bed 30 degrees, initiate 3% Hypertonic Saline 250 mL bolus, prepare urgent STAT CT Head.",
+    status: "MODERATE_WARNING",
+    attendingPhysician: "Dr. Maya Lin, MD (Neurocritical Care)",
+    timestamp: "2026-08-20 01:20",
+    alerts: [
+      "Incipient Cushing reflex pattern identified by autonomous Bayesian watcher",
+      "NPi pupil index reduced to 2.8 in right eye: uncal herniation risk"
+    ]
+  },
+  {
+    id: "AI-DIAG-904",
+    name: "Samuel O Connor",
+    age: 55,
+    gender: "Male",
+    bed: "ICU-RESP-04",
+    primaryComplaint: "Acute Respiratory Distress Syndrome (ARDS) Extubation Readiness",
+    aiModel: "DeepVent Lung Protective & Weaning Neural Engine v5.0",
+    compositeRiskScore: 0.12,
+    predictedOnsetHours: 0,
+    confidenceInterval: "95% CI 0.08 - 0.18",
+    brierScore: 0.021,
+    preTestProb: 0.50,
+    postTestProb: 0.08,
+    news2Score: 2,
+    lactate: 1.0,
+    hr: 76,
+    map: 84,
+    rr: 16,
+    spo2: 98,
+    wbc: 7.4,
+    crp: 12,
+    shapValues: [
+      { feature: "Rapid Shallow Breathing Index", impact: "-0.45", direction: "Optimal Lung Mechanics" },
+      { feature: "Work of Breathing & Diaphragmatic Excursion", impact: "-0.28", direction: "Muscle Recovery" },
+      { feature: "PaO2/FiO2 Ratio", impact: "-0.15", direction: "Excellent Gas Exchange" }
+    ],
+    fdaClassification: "FDA 510(k) Cleared Class II SaMD",
+    clinicalDecisionSupport: "Patient cleared for Spontaneous Breathing Trial (SBT) and planned extubation within the current nursing shift.",
+    status: "STABLE",
+    attendingPhysician: "Dr. Alistair Finch, MD (Pulmonary & Critical Care)",
+    timestamp: "2026-08-19 23:00",
+    alerts: [
+      "RSBI 38 breaths/min/L confirms 94% probability of successful extubation",
+      "Cough peak flow > 60 L/min: airway protective reflexes intact"
+    ]
+  }
+];
+
 export default function BiomedicalAiDiagnosticsOverwatchPage() {
-  const [activeTab, setActiveTab] = useState("RADIOLOGY_3D");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [severityFilter, setSeverityFilter] = useState("ALL");
-  const [notification, setNotification] = useState({ type: "", message: "" });
+  const { toasts, toast } = useKindToasts();
+  const [cases, setCases] = useState(SEED_BIOAI_CASES);
+  const [selectedCaseId, setSelectedCaseId] = useState(SEED_BIOAI_CASES[0].id);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [isRealTimeInference, setIsRealTimeInference] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterRisk, setFilterRisk] = useState("ALL");
+  const [inspectModalOpen, setInspectModalOpen] = useState(false);
+  const [emergencyModal, setEmergencyModal] = useState(null);
 
-  // Modal States
-  const [dicomInspectModal, setDicomInspectModal] = useState(null);
-  const [wsiInspectModal, setWsiInspectModal] = useState(null);
-  const [genomicInspectModal, setGenomicInspectModal] = useState(null);
-  const [ecgInspectModal, setEcgInspectModal] = useState(null);
-  const [eegInspectModal, setEegInspectModal] = useState(null);
-  const [octInspectModal, setOctInspectModal] = useState(null);
-  const [dermaInspectModal, setDermaInspectModal] = useState(null);
-  const [pharmaInspectModal, setPharmaInspectModal] = useState(null);
-  const [nlpInspectModal, setNlpInspectModal] = useState(null);
-  const [xaiInspectModal, setXaiInspectModal] = useState(null);
-  const [federatedModal, setFederatedModal] = useState(false);
-  const [samdAuditModal, setSamdAuditModal] = useState(null);
-  const [cdssAdvisoryModal, setCdssAdvisoryModal] = useState(null);
+  const [simVitalsScore, setSimVitalsScore] = useState(0.85);
+  const [simBiomarkerScore, setSimBiomarkerScore] = useState(0.78);
+  const [simEhrScore, setSimEhrScore] = useState(0.65);
+  const [simPreTestProb, setSimPreTestProb] = useState(0.20);
+  const [simLikelihoodRatio, setSimLikelihoodRatio] = useState(12.5);
 
-  // =========================================================================
-  // 1. RADIOLOGICAL DICOM 3D INFERENCE STATE
-  // =========================================================================
-  const [dicomScans, setDicomScans] = useState([
-    {
-      scanId: "DICOM-CT-9014",
-      patientId: "PAT-88102-VANCE",
-      modality: "Chest CT 3D Contrast",
-      aiModel: "MedTrack-BioLLM-v4.2-ResNet3D",
-      pathologyFinding: "Acute Pulmonary Embolism & Right Ventricular Strain",
-      confidence: 0.992,
-      hounsfieldUnits: "+65 HU (High Density Thrombus)",
-      severity: "CRITICAL_TRIAGE",
-      timestamp: "2026-08-16 11:30:00"
-    },
-    {
-      scanId: "DICOM-MRI-8812",
-      patientId: "PAT-77401-ROSTOVA",
-      modality: "Brain MRI FLAIR T2",
-      aiModel: "NeuroNet-Segmenter-v2.1",
-      pathologyFinding: "Acute Ischemic Lesion (Left Middle Cerebral Artery Territory)",
-      confidence: 0.984,
-      hounsfieldUnits: "Volume: 14.2 cm³ Penumbra Tissue",
-      severity: "HIGH_URGENCY",
-      timestamp: "2026-08-16 11:15:00"
-    },
-    {
-      scanId: "DICOM-XRAY-5510",
-      patientId: "PAT-66109-MILLER",
-      modality: "Chest Radiograph AP View",
-      aiModel: "PneumoDet-VGG19",
-      pathologyFinding: "Right Lower Lobe Consolidation (Bacterial Pneumonia)",
-      confidence: 0.941,
-      hounsfieldUnits: "Opacity Density: Moderate",
-      severity: "MEDIUM_ADVISORY",
-      timestamp: "2026-08-16 10:45:00"
-    },
-    {
-      scanId: "DICOM-CT-4412",
-      patientId: "PAT-55201-THORNE",
-      modality: "Abdominal Pelvic CT Triple Phase",
-      aiModel: "OncoSegment-3D-v3.0",
-      pathologyFinding: "Hepatic Lesion (Lesion 2.4cm - Suspicious for HCC)",
-      confidence: 0.978,
-      hounsfieldUnits: "+45 HU Arterial Phase Washout",
-      severity: "HIGH_URGENCY",
-      timestamp: "2026-08-16 09:30:00"
-    },
-    {
-      scanId: "DICOM-MRI-3301",
-      patientId: "PAT-44109-JENKINS",
-      modality: "Lumbar Spine MRI T1/T2",
-      aiModel: "SpineScan-ML-v1.8",
-      pathologyFinding: "L4-L5 Disc Herniation with Nerve Root Compression",
-      confidence: 0.965,
-      hounsfieldUnits: "Sub-millimeter Canal Stenosis",
-      severity: "MEDIUM_ADVISORY",
-      timestamp: "2026-08-16 08:20:00"
-    }
-  ]);
+  const selectedCase = useMemo(() => {
+    return cases.find((c) => c.id === selectedCaseId) || cases[0];
+  }, [cases, selectedCaseId]);
 
-  // =========================================================================
-  // 2. HISTOPATHOLOGY DIGITAL SLIDE CLASSIFIER STATE
-  // =========================================================================
-  const [wsiSlides, setWsiSlides] = useState([
-    {
-      slideId: "WSI-PATH-401",
-      specimenType: "Breast Core Needle Biopsy",
-      stainType: "Hematoxylin & Eosin (H&E) + Ki-67",
-      tumorType: "Invasive Ductal Carcinoma (Grade III)",
-      mitosisCount: "24 mitoses per 10 HPF",
-      ki67Index: "42.5% Proliferation High",
-      aiConfidence: 0.989,
-      status: "PATHOLOGIST_REVIEW_REQUIRED"
-    },
-    {
-      slideId: "WSI-PATH-402",
-      specimenType: "Prostate Radical Resection",
-      stainType: "H&E Stain Digital 40x Scan",
-      tumorType: "Prostate Adenocarcinoma (Gleason 4+3=7)",
-      mitosisCount: "12 mitoses per 10 HPF",
-      ki67Index: "18.2% Moderate",
-      aiConfidence: 0.976,
-      status: "CONFIRMED_BY_AI"
-    }
-  ]);
+  useEffect(() => {
+    if (!isRealTimeInference) return;
+    const interval = setInterval(() => {
+      setCases((prev) =>
+        prev.map((cs) => {
+          const delta = (Math.random() * 0.04 - 0.02);
+          const newScore = Math.max(0.01, Math.min(0.99, cs.compositeRiskScore + delta));
+          return {
+            ...cs,
+            compositeRiskScore: Number(newScore.toFixed(3)),
+            hr: cs.hr + (Math.random() > 0.7 ? (Math.random() > 0.5 ? 1 : -1) : 0)
+          };
+        })
+      );
+    }, 2800);
+    return () => clearInterval(interval);
+  }, [isRealTimeInference]);
 
-  // =========================================================================
-  // 3. GENOMIC SEQUENCING & PRECISION ONCOLOGY STATE
-  // =========================================================================
-  const [genomicVariants, setGenomicVariants] = useState([
-    {
-      sampleId: "GEN-SEQ-901",
-      geneTarget: "EGFR exon 19 deletion (p.E746_A750del)",
-      variantType: "Somatic Pathogenic Driver Mutation",
-      variantAlleleFreq: "34.8% VAF",
-      matchedTherapy: "Osimertinib (Tagrisso) 3rd Gen TKI",
-      fdaTier: "Tier 1A Companion Diagnostic",
-      crisprOffTargetRisk: "LOW (<0.01%)"
-    },
-    {
-      sampleId: "GEN-SEQ-902",
-      geneTarget: "BRAF V600E (p.Val600Glu)",
-      variantType: "Oncogenic Kinase Activation",
-      variantAlleleFreq: "48.2% VAF",
-      matchedTherapy: "Dabrafenib + Trametinib Dual Combination",
-      fdaTier: "Tier 1A Precision Oncology",
-      crisprOffTargetRisk: "LOW (<0.02%)"
-    }
-  ]);
-
-  // =========================================================================
-  // 4. CARDIOVASCULAR ECG DEEP LEARNING STATE
-  // =========================================================================
-  const [ecgReadings, setEcgReadings] = useState([
-    {
-      ecgId: "ECG-12LEAD-901",
-      patientName: "Robert Hayes (Bed 12 ICU)",
-      classification: "Acute ST-Elevation Myocardial Infarction (STEMI - Anterolateral)",
-      qtcInterval: "482 ms (Prolonged)",
-      arrhythmiaFlags: "Frequent Ventricular Premature Complexes (VPCs)",
-      aiAlertLevel: "CRITICAL_CODE_STEMI",
-      timestamp: "2026-08-16 11:32:00"
-    },
-    {
-      ecgId: "ECG-12LEAD-902",
-      patientName: "Clara Oswald (Bed 04 Cardiac)",
-      classification: "Atrial Fibrillation with Rapid Ventricular Response (RVR)",
-      qtcInterval: "440 ms (Normal)",
-      arrhythmiaFlags: "Irregularly Irregular R-R Interval",
-      aiAlertLevel: "HIGH_URGENCY",
-      timestamp: "2026-08-16 11:28:00"
-    }
-  ]);
-
-  // =========================================================================
-  // 5. NEUROLOGICAL CONTINUOUS EEG & STROKE STATE
-  // =========================================================================
-  const [eegStreams, setEegStreams] = useState([
-    {
-      streamId: "EEG-CHANNEL-64-A",
-      patient: "Eleanor Vance (ICU Bed 01)",
-      status: "Non-Convulsive Status Epilepticus (NCSE)",
-      spikeFrequency: "4.5 Hz Periodic Discharges",
-      aspectScore: "ASPECTS 8/10 Ischemia",
-      aiConfidence: 0.995,
-      alert: "IMMEDIATE_ANTIEPILEPTIC_STEPUP"
-    }
-  ]);
-
-  // Handlers
-  const handleTriggerInferencePipeline = (scanId) => {
-    setNotification({
-      type: "success",
-      message: `Re-ran 3D Neural Inference on ${scanId}. Confidence updated to 0.996 with Grad-CAM saliency alignment.`
+  const filteredCases = useMemo(() => {
+    return cases.filter((cs) => {
+      const matchesSearch =
+        cs.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cs.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cs.bed.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cs.primaryComplaint.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesRisk =
+        filterRisk === "ALL" ||
+        (filterRisk === "CRITICAL" && cs.compositeRiskScore >= 0.70) ||
+        (filterRisk === "WARNING" && cs.compositeRiskScore >= 0.40 && cs.compositeRiskScore < 0.70) ||
+        (filterRisk === "STABLE" && cs.compositeRiskScore < 0.40);
+      return matchesSearch && matchesRisk;
     });
+  }, [cases, searchQuery, filterRisk]);
+
+  const computedCompositeScore = useMemo(() => {
+    const total = simVitalsScore * 0.35 + simBiomarkerScore * 0.35 + simEhrScore * 0.30;
+    return Number(total.toFixed(3));
+  }, [simVitalsScore, simBiomarkerScore, simEhrScore]);
+
+  const computedPostTest = useMemo(() => {
+    const preOdds = simPreTestProb / (1 - simPreTestProb);
+    const postOdds = preOdds * simLikelihoodRatio;
+    const postProb = (postOdds / (1 + postOdds)) * 100;
+    return Number(postProb.toFixed(2));
+  }, [simPreTestProb, simLikelihoodRatio]);
+
+  const handleExportCsv = () => {
+    const headers = [
+      "Inference ID",
+      "Patient Name",
+      "Bed",
+      "Clinical Prediction Task",
+      "Deep Learning Model",
+      "AI Composite Risk Score",
+      "Predicted Lead Time (Hours)",
+      "Brier Score Calibration",
+      "Pre-Test Probability",
+      "Post-Test Probability (%)",
+      "NEWS2 Score",
+      "Serum Lactate",
+      "FDA SaMD Status",
+      "Clinical Decision Support Action"
+    ];
+    const rows = cases.map((c) => [
+      c.id,
+      c.name,
+      c.bed,
+      c.primaryComplaint,
+      c.aiModel,
+      c.compositeRiskScore,
+      c.predictedOnsetHours,
+      c.brierScore,
+      c.preTestProb,
+      c.postTestProb * 100,
+      c.news2Score,
+      c.lactate,
+      c.fdaClassification,
+      c.clinicalDecisionSupport
+    ]);
+    downloadCsv("bioai_diagnostics_telemetry_manifest.csv", headers, rows);
+    toast.success("Bio-AI Clinical Diagnostics Telemetry manifest exported to CSV.");
   };
 
-  const handleSignOffAiAdvisory = (scanId) => {
-    setDicomScans((prev) =>
-      prev.map((s) =>
-        s.scanId === scanId ? { ...s, severity: "PHYSICIAN_APPROVED" } : s
-      )
-    );
-    setNotification({
-      type: "success",
-      message: `Physician electronic signature applied to AI diagnostic recommendation for ${scanId}. EHR synced.`
-    });
+  const triggerRapidIntervention = (protocolName) => {
+    setEmergencyModal(protocolName);
+    toast.error(`RAPID INTERVENTION TRIGGERED: ${protocolName} for ${selectedCase.name} (${selectedCase.bed})`);
   };
-
-  // Filtered Scans List
-  const filteredDicomScans = useMemo(() => {
-    return dicomScans.filter((s) => {
-      const matchSearch =
-        s.scanId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.modality.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.pathologyFinding.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchSeverity =
-        severityFilter === "ALL" ||
-        (severityFilter === "CRITICAL" && s.severity.includes("CRITICAL")) ||
-        (severityFilter === "APPROVED" && s.severity.includes("APPROVED"));
-
-      return matchSearch && matchSeverity;
-    });
-  }, [dicomScans, searchTerm, severityFilter]);
 
   return (
-    <div className="w-full min-h-screen bg-slate-950 text-slate-100 font-sans p-4 md:p-8 space-y-6">
-      
-      {/* 1. Page Header */}
-      <div className="max-w-7xl mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6 font-sans">
+      <KindToastTray toasts={toasts} />
 
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-full flex items-center gap-1.5 font-mono">
-                <Brain size={13} className="animate-pulse" /> BIOMEDICAL AI DIAGNOSTICS & OVERWATCH
-              </span>
-              <span className="px-3 py-1 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center gap-1">
-                <ShieldCheck size={13} /> FDA 510(k) SaMD AUDITED
-              </span>
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 shadow-lg shadow-cyan-950/50">
+              <Brain className="w-7 h-7" />
             </div>
-
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-              Biomedical AI Diagnostics & Clinical Decision Command Station
-            </h1>
-            <p className="text-slate-400 text-sm max-w-3xl leading-relaxed">
-              Real-time deep learning inference for 3D DICOM radiology, histopathology whole-slide imaging, genomic variant interpretation, 12-lead ECG arrhythmia classification, and continuous EEG stroke overwatch.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 w-full lg:w-auto">
-            <button
-              type="button"
-              onClick={() => setFederatedModal(true)}
-              className="w-full lg:w-auto px-5 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-2xl transition shadow-lg shadow-purple-600/25 flex items-center justify-center gap-2"
-            >
-              <RefreshCw size={16} /> Sync Federated AI Mesh
-            </button>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white flex items-center gap-2">
+                Bio-AI Diagnostics & Clinical Inference Overwatch
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 font-semibold tracking-normal uppercase">
+                  FDA SaMD / GMLP / SHAP Explainability
+                </span>
+              </h1>
+              <p className="text-sm text-slate-400">
+                Continuous deep neural ensemble predictive inference, probabilistic uncertainty quantification, SHAP feature attribution, and closed-loop clinical decision support.
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Global Notifications */}
-        {notification.message && (
-          <div className="mt-6 p-4 rounded-2xl text-xs font-bold flex items-center justify-between bg-purple-500/10 border border-purple-500/30 text-purple-300">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 size={16} />
-              <span>{notification.message}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setNotification({ type: "", message: "" })}
-              className="text-slate-400 hover:text-white"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-      </div>
+        <div className="flex items-center gap-2.5 self-stretch md:self-auto justify-end">
+          <button
+            onClick={() => setIsRealTimeInference(!isRealTimeInference)}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all border ${
+              isRealTimeInference
+                ? "bg-rose-950/60 border-rose-500/40 text-rose-300 hover:bg-rose-900/60"
+                : "bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800"
+            }`}
+          >
+            {isRealTimeInference ? <Pause className="w-3.5 h-3.5 animate-pulse" /> : <Play className="w-3.5 h-3.5" />}
+            {isRealTimeInference ? "INFERENCE STREAM LIVE" : "INFERENCE PAUSED"}
+          </button>
 
-      {/* 2. Subsystem Navigation Tabs */}
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-        <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
-          {[
-            { id: "RADIOLOGY_3D", label: "3D DICOM Radiology AI", icon: Brain },
-            { id: "HISTOPATHOLOGY_WSI", label: "Histopathology WSI", icon: Microscope },
-            { id: "GENOMIC_PRECISION", label: "Genomic Oncology AI", icon: Dna },
-            { id: "CARDIO_ECG", label: "12-Lead ECG AI", icon: HeartPulse },
-            { id: "NEURO_EEG", label: "EEG Stroke Overwatch", icon: Activity },
-            { id: "OPHTHALMIC_OCT", label: "Ophthalmic OCT Scanner", icon: Eye },
-            { id: "DERMA_MELANOMA", label: "Dermatological AI", icon: Flame },
-            { id: "PHARMACOGENOMICS", label: "CYP450 Pharmacogenomics", icon: Stethoscope },
-            { id: "CLINICAL_NLP", label: "Clinical EHR NLP", icon: FileText },
-            { id: "EXPLAINABLE_XAI", label: "Grad-CAM XAI Saliency", icon: Sparkles },
-            { id: "FEDERATED_MESH", label: "Federated Privacy Mesh", icon: Globe },
-            { id: "FDA_SAMD_AUDIT", label: "FDA SaMD Compliance", icon: FileCheck },
-            { id: "CDSS_ADVISORY", label: "CDSS Real-Time Alerts", icon: ShieldAlert }
-          ].map((tab) => {
-            const IconComp = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? "bg-purple-600 text-white shadow-lg shadow-purple-600/20"
-                    : "bg-slate-800 text-slate-400 hover:text-white"
-                }`}
-              >
-                <IconComp size={15} /> {tab.label}
-              </button>
-            );
-          })}
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold bg-slate-900 border border-slate-700 text-slate-200 hover:bg-slate-800 transition-all"
+          >
+            <Download className="w-3.5 h-3.5 text-cyan-400" />
+            EXPORT CSV
+          </button>
+
+          <button
+            onClick={() => triggerRapidIntervention("CODE SEPSIS / STAT 1-HOUR BUNDLE")}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-950 transition-all"
+          >
+            <Siren className="w-4 h-4 animate-bounce" />
+            CODE SEPSIS
+          </button>
         </div>
       </div>
 
-      {/* =========================================================================
-          MODULE 1: RADIOLOGY 3D DICOM AI
-          ========================================================================= */}
-      {activeTab === "RADIOLOGY_3D" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-4 rounded-2xl text-xs">
-            <div className="relative w-full sm:w-80">
-              <Search size={14} className="absolute left-3 top-3 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Search DICOM ID, patient, pathology..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+        <StatCard icon={Users} label="Active AI Surveillance" value={`${cases.length} Beds`} subtext="100% Inferred" color="cyan" />
+        <StatCard icon={ShieldAlert} label="Critical Deterioration" value={cases.filter((c) => c.compositeRiskScore >= 0.70).length.toString()} subtext="Lead Time > 1.5h" color="rose" />
+        <StatCard icon={Radar} label="Mean Brier Score" value="0.039" subtext="High Calibration" color="emerald" />
+        <StatCard icon={Zap} label="Inference Latency" value="42 ms" subtext="Edge TensorRT" color="amber" />
+        <StatCard icon={Activity} label="NEWS2 > 5 Warning" value={cases.filter((c) => c.news2Score >= 5).length.toString()} subtext="Multi-Parameter" color="purple" />
+        <StatCard icon={ShieldCheck} label="FDA GMLP Quality" value="Class II SaMD" subtext="ISO 13485 / 21 CFR" color="indigo" />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="xl:col-span-4 space-y-4">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                <Network className="w-4 h-4 text-cyan-400" />
+                Live Inference Stream ({filteredCases.length})
+              </h2>
+              <span className="text-xs text-slate-500 font-mono">Edge Neural Core</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-bold uppercase text-[10px]">Filter Triage:</span>
-              <select
-                value={severityFilter}
-                onChange={(e) => setSeverityFilter(e.target.value)}
-                className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="ALL">ALL SCANS</option>
-                <option value="CRITICAL">CRITICAL TRIAGE</option>
-                <option value="APPROVED">PHYSICIAN APPROVED</option>
-              </select>
-            </div>
-          </div>
+            <div className="space-y-2 mb-3">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search patient, complaint, bed..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredDicomScans.map((s) => (
-              <div
-                key={s.scanId}
-                className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl hover:border-purple-500/40 transition flex flex-col justify-between"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-1 text-[11px] font-bold font-mono text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                      {s.scanId}
-                    </span>
-                    <span
-                      className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${
-                        s.severity.includes("CRITICAL")
-                          ? "bg-rose-500/20 text-rose-400 border-rose-500/30 animate-pulse"
-                          : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                      }`}
-                    >
-                      {s.severity}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-bold text-white font-mono leading-snug">{s.patientId}</h3>
-                    <p className="text-[11px] text-slate-400 font-sans mt-0.5">{s.modality}</p>
-                  </div>
-
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-1 text-xs font-mono">
-                    <div className="text-purple-300 font-bold leading-tight">{s.pathologyFinding}</div>
-                    <div className="flex justify-between text-slate-400 text-[10px] pt-1">
-                      <span>Density Profile:</span>
-                      <span className="text-amber-300">{s.hounsfieldUnits}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 text-xs font-mono">
-                    <div className="flex justify-between text-slate-400">
-                      <span>AI Model:</span>
-                      <span className="text-slate-300">{s.aiModel}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span>Confidence:</span>
-                      <span className="text-emerald-400 font-bold">{(s.confidence * 100).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-slate-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                {["ALL", "CRITICAL", "WARNING", "STABLE"].map((flt) => (
                   <button
-                    type="button"
-                    onClick={() => setDicomInspectModal(s)}
-                    className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs flex items-center gap-1 transition"
+                    key={flt}
+                    onClick={() => setFilterRisk(flt)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                      filterRisk === flt
+                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/50"
+                        : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"
+                    }`}
                   >
-                    <Eye size={13} /> View 3D Heatmap
+                    {flt}
                   </button>
-                  {s.severity.includes("CRITICAL") && (
-                    <button
-                      type="button"
-                      onClick={() => handleSignOffAiAdvisory(s.scanId)}
-                      className="py-2 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl font-bold text-xs flex items-center gap-1 transition"
-                    >
-                      <CheckCircle2 size={13} /> MD Sign-Off
-                    </button>
-                  )}
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+              {filteredCases.map((c) => {
+                const isSelected = c.id === selectedCase.id;
+                const isCrit = c.compositeRiskScore >= 0.70;
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => setSelectedCaseId(c.id)}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      isSelected
+                        ? "bg-slate-800/90 border-cyan-500/60 shadow-lg shadow-cyan-950/30 ring-1 ring-cyan-500/30"
+                        : "bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/40 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-slate-100">{c.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-cyan-400">
+                            {c.bed}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 line-clamp-1">{c.primaryComplaint}</p>
+                      </div>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                          isCrit
+                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                            : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                        }`}
+                      >
+                        {(c.compositeRiskScore * 100).toFixed(0)}% Risk
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1 pt-2 border-t border-slate-800/80 text-center text-[10px]">
+                      <div className="bg-slate-900/60 rounded p-1">
+                        <span className="text-slate-500 block">Lead Time</span>
+                        <span className="font-bold text-cyan-300">{c.predictedOnsetHours}h</span>
+                      </div>
+                      <div className="bg-slate-900/60 rounded p-1">
+                        <span className="text-slate-500 block">NEWS2</span>
+                        <span className={`font-bold ${c.news2Score >= 7 ? "text-rose-400" : "text-slate-200"}`}>{c.news2Score}</span>
+                      </div>
+                      <div className="bg-slate-900/60 rounded p-1">
+                        <span className="text-slate-500 block">Lactate</span>
+                        <span className={`font-bold ${c.lactate > 2.0 ? "text-amber-400" : "text-emerald-400"}`}>{c.lactate}</span>
+                      </div>
+                      <div className="bg-slate-900/60 rounded p-1">
+                        <span className="text-slate-500 block">Brier</span>
+                        <span className="font-bold text-slate-300">{c.brierScore}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="xl:col-span-8 space-y-4">
+          <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl md:text-2xl font-black text-white">{selectedCase.name}</span>
+                  <span className="text-xs px-2.5 py-1 rounded-md bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-mono font-bold">
+                    {selectedCase.id}
+                  </span>
+                  <span className="text-xs px-2.5 py-1 rounded-md bg-purple-950 border border-purple-500/40 text-purple-300 font-bold">
+                    {selectedCase.bed}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1 flex items-center gap-3 flex-wrap">
+                  <span>Model: <b className="text-slate-200">{selectedCase.aiModel}</b></span>
+                  <span>•</span>
+                  <span>Predicted Horizon: <b className="text-rose-400">{selectedCase.predictedOnsetHours} Hours Ahead</b></span>
+                  <span>•</span>
+                  <span>Attending: <b className="text-cyan-400">{selectedCase.attendingPhysician}</b></span>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setInspectModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 flex items-center gap-1.5 transition-all shadow-lg"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Full Neural Dossier
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 mt-5 pt-4 border-t border-slate-800/80">
+              <Vital label="Composite AI Risk" value={`${(selectedCase.compositeRiskScore * 100).toFixed(1)}%`} status={selectedCase.compositeRiskScore >= 0.70 ? "critical" : "normal"} />
+              <Vital label="Confidence Band" value="[0.82-0.94]" status="normal" />
+              <Vital label="Post-Test Prob" value={`${(selectedCase.postTestProb * 100).toFixed(0)}%`} status="critical" />
+              <Vital label="NEWS2 Score" value={selectedCase.news2Score.toString()} status={selectedCase.news2Score >= 7 ? "critical" : "normal"} />
+              <Vital label="Heart Rate" value={`${selectedCase.hr} bpm`} status="normal" />
+              <Vital label="Mean BP (MAP)" value={`${selectedCase.map} mmHg`} status={selectedCase.map < 65 ? "warning" : "normal"} />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+            {[
+              { id: "overview", label: "SHAP Explainability & Risk Drivers", icon: Sparkles },
+              { id: "ensemble", label: "Neural Model Architecture & Confidence", icon: Binary },
+              { id: "workbench", label: "Bayesian Fagan & Gradient Workbench", icon: Sliders },
+              { id: "protocols", label: "Autonomous Intervention Protocols", icon: Siren }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    isActive
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-md shadow-cyan-950/40"
+                      : "bg-slate-900/60 text-slate-400 border border-slate-800/80 hover:text-slate-200 hover:bg-slate-800/60"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeTab === "overview" && (
+            <div className="space-y-4">
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl">
+                <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    SHAP (Shapley Additive Explanations) Feature Attribution
+                  </span>
+                  <span className="text-[11px] font-mono text-cyan-400 font-semibold">Local Game-Theoretic Weights</span>
+                </h3>
+
+                <div className="space-y-2.5">
+                  {selectedCase.shapValues.map((shp, idx) => (
+                    <div key={idx} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-semibold text-slate-200">{shp.feature}</span>
+                        <span className="font-mono font-bold text-cyan-300 text-sm">{shp.impact}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                        <span>Clinical Physiological Impact:</span>
+                        <span className="font-semibold text-rose-300">{shp.direction}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* =========================================================================
-          MODULE 2: HISTOPATHOLOGY WSI
-          ========================================================================= */}
-      {activeTab === "HISTOPATHOLOGY_WSI" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <Microscope size={18} className="text-purple-400" /> Histopathology Digital Whole-Slide Imaging (WSI) Classifier
-              </h3>
-              <button
-                type="button"
-                onClick={() => setWsiInspectModal({ slideId: "WSI-PATH-401" })}
-                className="px-3 py-1.5 bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect Digital Slide Heatmap
-              </button>
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl">
+                <h3 className="text-sm font-bold text-slate-200 mb-2 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  Autonomous Closed-Loop Clinical Recommendation
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  {selectedCase.clinicalDecisionSupport}
+                </p>
+                <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                  <span>Regulatory Status: <b className="text-cyan-400">{selectedCase.fdaClassification}</b></span>
+                  <span>Inference Timestamp: <b className="text-slate-200">{selectedCase.timestamp}</b></span>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div className="space-y-3">
-              {wsiSlides.map((w) => (
-                <div key={w.slideId} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex justify-between items-center">
+          {activeTab === "ensemble" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+                  <Binary className="w-4 h-4 text-purple-400" />
+                  Deep Learning Ensemble Architecture
+                </h3>
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 mb-3 text-xs space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Model Family:</span>
+                    <span className="font-bold text-white">Transformer + Temporal CNN</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Ensemble Members:</span>
+                    <span className="font-mono text-cyan-300">10 Sub-Networks (Bootstrap)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Quantization:</span>
+                    <span className="font-mono text-emerald-300">FP16 TensorRT</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">FDA SaMD Classification:</span>
+                    <span className="font-bold text-purple-300">{selectedCase.fdaClassification}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+                  <Radar className="w-4 h-4 text-cyan-400" />
+                  Probabilistic Uncertainty & Calibration
+                </h3>
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-center mb-3">
+                  <span className="text-xs text-slate-400 block">Brier Calibration Score</span>
+                  <span className="text-3xl font-black text-emerald-400 font-mono">{selectedCase.brierScore}</span>
+                  <span className="text-[10px] text-slate-500 block mt-1">Target &lt; 0.05 indicates superior probability calibration</span>
+                </div>
+                <div className="text-xs text-slate-300 space-y-1">
+                  <div className="flex justify-between p-2 rounded bg-slate-950/60 border border-slate-800">
+                    <span>Epistemic Uncertainty:</span>
+                    <span className="font-mono text-cyan-300">Low (0.024)</span>
+                  </div>
+                  <div className="flex justify-between p-2 rounded bg-slate-950/60 border border-slate-800">
+                    <span>Aleatoric Data Noise:</span>
+                    <span className="font-mono text-slate-400">Nominal (0.018)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "workbench" && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-cyan-400" />
+                  Bayesian Fagan Nomogram & Multi-Modal Gradient Workbench
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Interactive simulation for post-test probability calculations and composite deterioration gradients.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                  <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Multi-Modal Inputs</h4>
                   <div>
-                    <span className="text-purple-300 font-bold text-sm">{w.slideId} • {w.specimenType}</span>
-                    <p className="text-slate-300 text-[11px] font-sans mt-0.5">Tumor: {w.tumorType} | Ki-67: {w.ki67Index}</p>
+                    <label className="text-[11px] text-slate-400 block mb-1">Vitals Anomaly Gradient: {(simVitalsScore * 100).toFixed(0)}%</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={simVitalsScore}
+                      onChange={(e) => setSimVitalsScore(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-400"
+                    />
                   </div>
-                  <div className="text-right">
-                    <span className="text-emerald-400 font-bold block">{w.status}</span>
-                    <span className="text-slate-400 text-[10px]">Confidence: {(w.aiConfidence * 100).toFixed(1)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 3: GENOMIC PRECISION ONCOLOGY
-          ========================================================================= */}
-      {activeTab === "GENOMIC_PRECISION" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <Dna size={18} className="text-emerald-400" /> Genomic Sequencing & Precision Oncology Workbench
-              </h3>
-              <button
-                type="button"
-                onClick={() => setGenomicInspectModal({ sampleId: "GEN-SEQ-901" })}
-                className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect Somatic Driver Variants
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {genomicVariants.map((g) => (
-                <div key={g.sampleId} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-                  <div className="flex justify-between items-center text-emerald-400 font-bold">
-                    <span>{g.sampleId} • {g.geneTarget}</span>
-                    <span className="bg-emerald-500/20 px-2.5 py-0.5 rounded-lg border border-emerald-500/30 text-[10px]">{g.fdaTier}</span>
-                  </div>
-                  <div className="text-slate-300 text-xs font-sans">Matched Therapy: {g.matchedTherapy}</div>
-                  <div className="text-purple-300 text-[11px]">Variant Allele Frequency: {g.variantAlleleFreq} | CRISPR Off-Target: {g.crisprOffTargetRisk}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 4: CARDIO ECG
-          ========================================================================= */}
-      {activeTab === "CARDIO_ECG" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <HeartPulse size={18} className="text-rose-400" /> Cardiovascular 12-Lead ECG Deep Learning Engine
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEcgInspectModal({ ecgId: "ECG-12LEAD-901" })}
-                className="px-3 py-1.5 bg-rose-600/20 text-rose-300 border border-rose-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect 12-Lead Waveform ST-Elevation
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {ecgReadings.map((e) => (
-                <div key={e.ecgId} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex justify-between items-center">
                   <div>
-                    <span className="text-rose-400 font-bold">{e.ecgId} • {e.patientName}</span>
-                    <p className="text-slate-300 text-[11px] font-sans mt-0.5">Classification: {e.classification}</p>
-                    <p className="text-slate-500 text-[10px]">Flags: {e.arrhythmiaFlags}</p>
+                    <label className="text-[11px] text-slate-400 block mb-1">Lab Biomarker Shift: {(simBiomarkerScore * 100).toFixed(0)}%</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={simBiomarkerScore}
+                      onChange={(e) => setSimBiomarkerScore(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-400"
+                    />
                   </div>
-                  <div className="text-right">
-                    <span className="text-rose-400 font-bold block">{e.aiAlertLevel}</span>
-                    <span className="text-slate-400 text-[10px]">QTc: {e.qtcInterval}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 5: NEURO EEG STROKE
-          ========================================================================= */}
-      {activeTab === "NEURO_EEG" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <Activity size={18} className="text-purple-400" /> Neurological Continuous EEG & Stroke Ischemia Overwatch
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEegInspectModal({ streamId: "EEG-CHANNEL-64-A" })}
-                className="px-3 py-1.5 bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect 64-Channel EEG Spectral Density
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {eegStreams.map((eg) => (
-                <div key={eg.streamId} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex justify-between items-center">
                   <div>
-                    <span className="text-purple-300 font-bold">{eg.streamId} • {eg.patient}</span>
-                    <p className="text-slate-300 text-[11px] font-sans mt-0.5">Status: {eg.status}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-rose-400 font-bold block">{eg.alert}</span>
-                    <span className="text-slate-400 text-[10px]">{eg.aspectScore}</span>
+                    <label className="text-[11px] text-slate-400 block mb-1">EHR Clinical Trajectory: {(simEhrScore * 100).toFixed(0)}%</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={simEhrScore}
+                      onChange={(e) => setSimEhrScore(parseFloat(e.target.value))}
+                      className="w-full accent-cyan-400"
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* =========================================================================
-          MODULE 6: OPHTHALMIC OCT
-          ========================================================================= */}
-      {activeTab === "OPHTHALMIC_OCT" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <Eye size={18} className="text-cyan-400" /> Ophthalmic OCT Retinal Layer AI Scanner
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                  <h4 className="text-xs font-bold text-purple-400 uppercase tracking-wider">Bayesian Parameters</h4>
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">Pre-Test Probability: {(simPreTestProb * 100).toFixed(0)}%</label>
+                    <input
+                      type="range"
+                      min="0.01"
+                      max="0.90"
+                      step="0.01"
+                      value={simPreTestProb}
+                      onChange={(e) => setSimPreTestProb(parseFloat(e.target.value))}
+                      className="w-full accent-purple-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">Likelihood Ratio (LR+): {simLikelihoodRatio}x</label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="30"
+                      step="0.5"
+                      value={simLikelihoodRatio}
+                      onChange={(e) => setSimLikelihoodRatio(parseFloat(e.target.value))}
+                      className="w-full accent-purple-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Inference Output</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex justify-between">
+                        <span className="text-slate-400">Composite Risk Gradient:</span>
+                        <span className={`font-mono font-bold ${computedCompositeScore >= 0.70 ? "text-rose-400" : "text-cyan-300"}`}>
+                          {(computedCompositeScore * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex justify-between">
+                        <span className="text-slate-400">Bayesian Post-Test Prob:</span>
+                        <span className="font-mono font-bold text-purple-300">{computedPostTest}%</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex justify-between">
+                        <span className="text-slate-400">Clinical Alert Tier:</span>
+                        <span className="font-bold text-rose-300">
+                          {computedCompositeScore >= 0.70 ? "CRITICAL (Immediate Action)" : "MODERATE"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => toast.success("Simulated inference gradient saved to Clinical AI Audit Store.")}
+                    className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs transition-all shadow-md mt-4"
+                  >
+                    Commit Inferred Gradient
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "protocols" && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+              <h3 className="text-sm font-bold text-rose-400 flex items-center gap-2">
+                <Siren className="w-4 h-4" />
+                Rapid Clinical AI Escalation Protocols
               </h3>
-              <button
-                type="button"
-                onClick={() => setOctInspectModal({ octId: "OCT-RETINA-01" })}
-                className="px-3 py-1.5 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect Macular Thickness Scan
-              </button>
-            </div>
+              <div className="space-y-2 text-xs">
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-white block">Surviving Sepsis Campaign 1-Hour Bundle</span>
+                    <span className="text-slate-400">Automatic blood culture orders, broad-spectrum antibiotic prep, and 30 mL/kg crystalloid fluid bolus.</span>
+                  </div>
+                  <button
+                    onClick={() => triggerRapidIntervention("SEPSIS 1-HOUR BUNDLE")}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold"
+                  >
+                    Dispatch Bundle
+                  </button>
+                </div>
 
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>Retinal Thickness Index:</span><strong className="text-cyan-300">342 µm (Macular Edema Stage II)</strong></div>
-              <div className="flex justify-between"><span>Diabetic Retinopathy Grading:</span><strong className="text-amber-400">Severe Non-Proliferative (NPDR)</strong></div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-white block">Neurological Emergency Code (Target ICP &lt; 20 mmHg)</span>
+                    <span className="text-slate-400">Hyperosmolar therapy (Mannitol / 3% NaCl), hyperventilation standby, urgent neurosurgical consult.</span>
+                  </div>
+                  <button
+                    onClick={() => triggerRapidIntervention("CODE NEURO / ICP SPIKE")}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold"
+                  >
+                    Dispatch Code
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* =========================================================================
-          MODULE 7: DERMATOLOGICAL AI
-          ========================================================================= */}
-      {activeTab === "DERMA_MELANOMA" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <Flame size={18} className="text-amber-400" /> Dermatological Melanoma Multispectral Classifier
-              </h3>
-              <button
-                type="button"
-                onClick={() => setDermaInspectModal({ dermaId: "DERM-LESION-901" })}
-                className="px-3 py-1.5 bg-amber-600/20 text-amber-300 border border-amber-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect ABCD Lesion Boundary
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>Dermoscopy ABCD Score:</span><strong className="text-rose-400">7.8 / 10.0 (High Malignancy Risk)</strong></div>
-              <div className="flex justify-between"><span>Clark Level Staging:</span><strong className="text-amber-300">Level IV Invasion Depth (1.8mm)</strong></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 8: PHARMACOGENOMICS
-          ========================================================================= */}
-      {activeTab === "PHARMACOGENOMICS" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <Stethoscope size={18} className="text-emerald-400" /> Pharmacogenomic CYP450 Drug Response Simulator
-              </h3>
-              <button
-                type="button"
-                onClick={() => setPharmaInspectModal({ pharmaId: "PGX-CYP2D6-01" })}
-                className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Simulate Dose Kinetics
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>CYP2D6 Genotype:</span><strong className="text-emerald-300">*4/*4 Poor Metabolizer (PM)</strong></div>
-              <div className="flex justify-between"><span>Warfarin / Clopidogrel Sensitivity:</span><strong className="text-rose-400">HIGH BLEEDING RISK - DOSE REDUCTION 50%</strong></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 9: CLINICAL NLP
-          ========================================================================= */}
-      {activeTab === "CLINICAL_NLP" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <FileText size={18} className="text-purple-400" /> Clinical Natural Language Processing (NLP) Entity Extractor
-              </h3>
-              <button
-                type="button"
-                onClick={() => setNlpInspectModal({ nlpId: "NLP-SNOMED-901" })}
-                className="px-3 py-1.5 bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect EHR Ontological Mapping
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>Parsed EHR Note SNOMED-CT Code:</span><strong className="text-purple-300">SNOMED-CT 22298006 (Myocardial Infarction)</strong></div>
-              <div className="flex justify-between"><span>ICD-11 Binding Accuracy:</span><strong className="text-emerald-400">99.4% Ontological Mapping</strong></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 10: EXPLAINABLE XAI
-          ========================================================================= */}
-      {activeTab === "EXPLAINABLE_XAI" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <Sparkles size={18} className="text-amber-400" /> Explainable AI (XAI) Grad-CAM Feature Attribution Engine
-              </h3>
-              <button
-                type="button"
-                onClick={() => setXaiInspectModal({ xaiId: "XAI-SHAP-901" })}
-                className="px-3 py-1.5 bg-amber-600/20 text-amber-300 border border-amber-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                View Feature Weight Breakdown
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>Saliency Map Alignment Score:</span><strong className="text-amber-300">0.982 Grad-CAM Pixel Overlap</strong></div>
-              <div className="flex justify-between"><span>SHAP Feature Attribution:</span><strong className="text-emerald-400">Radiological Margin Sharpness (42% Weight)</strong></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 11: FEDERATED MESH
-          ========================================================================= */}
-      {activeTab === "FEDERATED_MESH" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-              <Globe size={18} className="text-purple-400" /> Federated Learning Privacy-Preserving Mesh Node
-            </h3>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>Differential Privacy Noise (ε):</span><strong className="text-purple-300">ε = 0.5 (Strict Privacy Guaranteed)</strong></div>
-              <div className="flex justify-between"><span>Active Mesh Nodes:</span><strong className="text-emerald-400">14 Partner Academic Medical Centers</strong></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 12: FDA SAMD AUDIT
-          ========================================================================= */}
-      {activeTab === "FDA_SAMD_AUDIT" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <FileCheck size={18} className="text-emerald-400" /> FDA SaMD Model Drift & Bias Audit Ledger
-              </h3>
-              <button
-                type="button"
-                onClick={() => setSamdAuditModal({ auditId: "SAMD-510K-901" })}
-                className="px-3 py-1.5 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Generate 510(k) Compliance Report
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>Model Drift Metric (PSI):</span><strong className="text-emerald-400">PSI = 0.02 (Stable Model Distribution)</strong></div>
-              <div className="flex justify-between"><span>510(k) Clearance ID:</span><strong className="text-cyan-300">K260816-SaMD-AI-01</strong></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODULE 13: CDSS ADVISORY
-          ========================================================================= */}
-      {activeTab === "CDSS_ADVISORY" && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 font-mono text-xs">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-white flex items-center gap-2 font-sans">
-                <ShieldAlert size={18} className="text-rose-400" /> Real-Time Clinical Decision Support System (CDSS) Advisory
-              </h3>
-              <button
-                type="button"
-                onClick={() => setCdssAdvisoryModal({ advisoryId: "CDSS-ADV-901" })}
-                className="px-3 py-1.5 bg-rose-600/20 text-rose-300 border border-rose-500/30 rounded-xl font-bold font-sans text-xs"
-              >
-                Inspect Critical Alert Protocol
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div className="flex justify-between"><span>Active Advisory #01:</span><strong className="text-rose-400">High-Risk Acute Ischemia Step-Up (ENFORCING)</strong></div>
-              <div className="flex justify-between"><span>HL7 FHIR Sync:</span><strong className="text-emerald-400">FHIR R4 DiagnosticReport Resource Synced</strong></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DICOM Inspect Modal */}
-      {dicomInspectModal && (
+      {inspectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full text-slate-100 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-purple-400 font-sans">3D DICOM AI Saliency Heatmap</h3>
-              <button type="button" onClick={() => setDicomInspectModal(null)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setInspectModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-cyan-400">
+                <Brain className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Full Neural Inference Dossier: {selectedCase.name}</h2>
+                <p className="text-xs text-slate-400">ID: {selectedCase.id} | Model: {selectedCase.aiModel}</p>
+              </div>
             </div>
 
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div>Scan Identifier: <strong className="text-white">{dicomInspectModal.scanId}</strong></div>
-              <div>Finding: <span className="text-purple-300">{dicomInspectModal.pathologyFinding}</span></div>
-              <div>Confidence: <span className="text-emerald-400 font-bold">{(dicomInspectModal.confidence * 100).toFixed(1)}%</span></div>
+            <div className="space-y-3 text-xs">
+              <Row label="Primary Clinical Indication" value={selectedCase.primaryComplaint} />
+              <Row label="AI Composite Risk Score" value={`${(selectedCase.compositeRiskScore * 100).toFixed(1)}%`} />
+              <Row label="Estimated Lead Time" value={`${selectedCase.predictedOnsetHours} Hours`} />
+              <Row label="Brier Calibration Score" value={selectedCase.brierScore} />
+              <Row label="Post-Test Probability" value={`${(selectedCase.postTestProb * 100).toFixed(0)}%`} />
+              <Row label="FDA SaMD Classification" value={selectedCase.fdaClassification} />
+              <Row label="Attending Physician" value={selectedCase.attendingPhysician} />
+              <Row label="Inference Timestamp" value={selectedCase.timestamp} />
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="mt-6 flex justify-end">
               <button
-                type="button"
-                onClick={() => setDicomInspectModal(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs font-sans"
+                onClick={() => setInspectModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-all"
               >
-                Close Heatmap
+                Close Dossier
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* WSI Inspect Modal */}
-      {wsiInspectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full text-slate-100 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-purple-400 font-sans">Histopathology WSI Slide Heatmap</h3>
-              <button type="button" onClick={() => setWsiInspectModal(null)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
+      {emergencyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-rose-950/90 border border-rose-500/60 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative text-rose-100">
+            <button
+              onClick={() => setEmergencyModal(null)}
+              className="absolute top-4 right-4 text-rose-300 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <Siren className="w-8 h-8 text-rose-400 animate-bounce" />
+              <div>
+                <h2 className="text-xl font-black text-white">{emergencyModal}</h2>
+                <p className="text-xs text-rose-200">Patient: {selectedCase.name} ({selectedCase.bed})</p>
+              </div>
             </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div>Slide Identifier: <strong className="text-white">{wsiInspectModal.slideId}</strong></div>
-              <div>Classification: <span className="text-purple-300 font-bold">INVASIVE DUCTAL CARCINOMA GRADE III</span></div>
+            <p className="text-sm text-rose-100 mb-4">
+              Clinical decision support intervention triggered. ICU Rapid Response and pharmacy satellites notified immediately.
+            </p>
+            <div className="p-3 bg-black/40 rounded-xl border border-rose-500/30 text-xs space-y-2 mb-6">
+              <div>• Composite Risk: <b>{(selectedCase.compositeRiskScore * 100).toFixed(0)}%</b></div>
+              <div>• Serum Lactate: <b>{selectedCase.lactate} mmol/L</b></div>
+              <div>• NEWS2 Index: <b>{selectedCase.news2Score}</b></div>
             </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setWsiInspectModal(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs font-sans"
-              >
-                Close
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                toast.success(`Protocol ${emergencyModal} execution confirmed.`);
+                setEmergencyModal(null);
+              }}
+              className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold rounded-xl text-xs transition-all shadow-lg"
+            >
+              Acknowledge & Confirm Protocol
+            </button>
           </div>
         </div>
       )}
-
-      {/* Genomic Inspect Modal */}
-      {genomicInspectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full text-slate-100 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-emerald-400 font-sans">Somatic Mutation Variant Inspection</h3>
-              <button type="button" onClick={() => setGenomicInspectModal(null)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div>Sample ID: <strong className="text-white">{genomicInspectModal.sampleId}</strong></div>
-              <div>Gene Target: <span className="text-emerald-300 font-bold">EGFR EXON 19 DELETION</span></div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setGenomicInspectModal(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs font-sans"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ECG Inspect Modal */}
-      {ecgInspectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full text-slate-100 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-rose-400 font-sans">12-Lead ECG Waveform Saliency</h3>
-              <button type="button" onClick={() => setEcgInspectModal(null)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div>ECG Reading: <strong className="text-white">{ecgInspectModal.ecgId}</strong></div>
-              <div>ST Elevation: <span className="text-rose-400 font-bold">ANTEROLATERAL STEMI DETECTED</span></div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setEcgInspectModal(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs font-sans"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Federated Modal */}
-      {federatedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full text-slate-100 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-purple-400 font-sans">Sync Federated AI Mesh</h3>
-              <button type="button" onClick={() => setFederatedModal(false)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div>Federated Round: <strong className="text-white">ROUND-884-GLOBAL</strong></div>
-              <div>Privacy Noise: <span className="text-emerald-400 font-bold">DIFFERENTIAL_PRIVACY_ENFORCED</span></div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setFederatedModal(false);
-                  setNotification({ type: "success", message: "Federated weights synchronized with 14 Academic Medical Centers!" });
-                }}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold text-xs font-sans shadow-lg shadow-purple-600/20"
-              >
-                Execute Weights Exchange
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FDA SaMD Audit Modal */}
-      {samdAuditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full text-slate-100 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-emerald-400 font-sans">FDA 510(k) SaMD Model Drift Audit</h3>
-              <button type="button" onClick={() => setSamdAuditModal(null)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div>Audit Record: <strong className="text-white">{samdAuditModal.auditId}</strong></div>
-              <div>Population Stability Index (PSI): <span className="text-emerald-400 font-bold">PSI = 0.02 (COMPLIANT)</span></div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setSamdAuditModal(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs font-sans"
-              >
-                Close Audit
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CDSS Advisory Modal */}
-      {cdssAdvisoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full text-slate-100 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-rose-400 font-sans">Real-Time CDSS Advisory Rule</h3>
-              <button type="button" onClick={() => setCdssAdvisoryModal(null)} className="text-slate-400 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-              <div>Advisory ID: <strong className="text-white">{cdssAdvisoryModal.advisoryId}</strong></div>
-              <div>Action: <span className="text-rose-400 font-bold">DISPATCH CRITICAL CARE TEAM</span></div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setCdssAdvisoryModal(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs font-sans"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

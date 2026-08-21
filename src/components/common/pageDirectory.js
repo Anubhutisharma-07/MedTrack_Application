@@ -121,6 +121,7 @@ export const PAGE_LABELS = {
   "neonatal-nicu": { label: "Neonatal NICU", keywords: "nicu neonate newborn incubator preterm apnoea" },
   "emergency-triage": { label: "Emergency Triage", keywords: "ed emergency triage esi ambulance bed board boarding" },
   "hospital-command": { label: "Hospital Command & Orchestration", keywords: "command centre capacity census orchestration operations" },
+  "respiratory-ventilator": { label: "Respiratory & Ventilator Fleet", keywords: "ventilator respiratory ards tidal volume peep weaning extubation oxygen cylinder hfnc niv" },
 
   // --- diagnostics and imaging -----------------------------------------------------------------
   "radiology-imaging": { label: "Radiology Imaging & PACS", keywords: "radiology pacs dicom ct mri xray scanner imaging" },
@@ -128,6 +129,7 @@ export const PAGE_LABELS = {
   "lab-automation": { label: "Lab Automation & Diagnostics", keywords: "laboratory analyser assay specimen track qc turnaround" },
   "clinical-ai": { label: "Biomedical & Clinical AI", keywords: "ai model inference deterioration risk triage cds" },
   "biomedical-ai-diagnostics": { label: "AI Diagnostics Overwatch", keywords: "ai diagnostics drift inference overwatch model monitoring" },
+  "poct-governance": { label: "Point-of-Care Testing Governance", keywords: "poct point of care glucose meter blood gas westgard qc levey jennings competency lot cartridge strip" },
   "biomedical-ai-governance": { label: "Biomedical AI Governance", keywords: "ai governance model registry approval bias validation" },
   "patient-ehr-analytics": { label: "Patient EHR Analytics", keywords: "ehr analytics readmission cohort predictive patient record" },
   "ophthalmology-vision": { label: "Ophthalmology & Vision Diagnostics", keywords: "eye ophthalmology oct fundus retina retinopathy cataract iol biometry laser yag perimetry glaucoma" },
@@ -137,6 +139,7 @@ export const PAGE_LABELS = {
   "surgical-robotics": { label: "Surgical Robotics & OR", keywords: "operating theatre robot surgery or turnover instrument" },
   "oncology-infusion": { label: "Oncology Infusion", keywords: "chemotherapy infusion vesicant cytotoxic dose chair oncology" },
   "dialysis-renal": { label: "Dialysis & Renal Replacement", keywords: "dialysis renal haemodialysis ktv water loop crrt nephrology" },
+  "transplant-procurement": { label: "Transplant & Organ Procurement", keywords: "transplant organ donor recipient ischaemia perfusion hla mismatch crossmatch dsa kidney liver heart lung dcd dbd" },
   "blood-bank": { label: "Blood Bank", keywords: "blood bank haemovigilance donor unit inventory group" },
   "blood-bank-transfusion": { label: "Transfusion Medicine", keywords: "transfusion crossmatch blood product reaction abo compatibility" },
   "telehealth": { label: "Telehealth", keywords: "telehealth virtual consult video remote appointment" },
@@ -146,6 +149,7 @@ export const PAGE_LABELS = {
   "sterile-processing": { label: "Sterile Processing (CSSD)", keywords: "cssd sterile autoclave tray instrument decontamination bowie dick" },
   "cold-chain": { label: "Cold Chain Command", keywords: "cold chain freezer excursion temperature vaccine cryo dscsa" },
   "medication-cold-chain": { label: "Medication Supply & Cold Chain", keywords: "medication supply cold chain distribution shipment pedigree" },
+  "medical-gas-plant": { label: "Medical Gas & Utilities Plant", keywords: "medical gas oxygen vie manifold pipeline avsu zone valve vacuum agss compressor htm nfpa piped" },
   "pharmacy-supply": { label: "Pharmacy & Med-Supply Chain", keywords: "pharmacy dispensing stock shortage formulary supply" },
   "pharmacovigilance": { label: "Pharmacovigilance & Drug Safety", keywords: "adverse event drug safety signal meddra pharmacovigilance recall" },
 
@@ -153,6 +157,7 @@ export const PAGE_LABELS = {
   "clinical-trial": { label: "Clinical Trials & Genomic Research", keywords: "trial protocol enrollment cohort biomarker research" },
   "genomic-clinical-trials": { label: "Genomic Clinical Trials", keywords: "genomics sequencing variant precision medicine trial" },
   "regulatory-audit": { label: "Regulatory Audit & Provenance", keywords: "audit provenance c2pa hipaa evidence attestation ledger" },
+  "radiation-safety": { label: "Radiation Safety & Dosimetry", keywords: "radiation dosimetry dose badge sealed source isotope decay half life drl irmer irr17 lead apron lens" },
 
   // --- enterprise security consoles that had no entry ------------------------------------------
   "security-compliance": { label: "Security & Compliance Hub", keywords: "security compliance posture controls overview" },
@@ -187,6 +192,7 @@ export const CONSOLE_GROUPS = [
       "pediatric-neonatal-icu",
       "emergency-triage",
       "hospital-command",
+      "respiratory-ventilator",
     ],
   },
   {
@@ -200,6 +206,7 @@ export const CONSOLE_GROUPS = [
       "biomedical-ai-diagnostics",
       "patient-ehr-analytics",
       "ophthalmology-vision",
+      "poct-governance",
     ],
   },
   {
@@ -214,6 +221,7 @@ export const CONSOLE_GROUPS = [
       "blood-bank-transfusion",
       "telehealth",
       "telehealth-remote-monitoring",
+      "transplant-procurement",
     ],
   },
   {
@@ -225,6 +233,7 @@ export const CONSOLE_GROUPS = [
       "medication-cold-chain",
       "pharmacy-supply",
       "pharmacovigilance",
+      "medical-gas-plant",
     ],
   },
   {
@@ -236,6 +245,7 @@ export const CONSOLE_GROUPS = [
       "regulatory-audit",
       "biomedical-ai-governance",
       "security-compliance",
+      "radiation-safety",
     ],
   },
 ];
