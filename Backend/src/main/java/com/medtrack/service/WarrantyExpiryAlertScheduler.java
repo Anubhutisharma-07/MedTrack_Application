@@ -1,6 +1,7 @@
 package com.medtrack.service;
 
 import com.medtrack.model.Equipment;
+import com.medtrack.model.EquipmentStatus;
 import com.medtrack.model.OperationsEvent;
 import com.medtrack.repository.EquipmentRepository;
 import com.medtrack.repository.OperationsEventRepository;
@@ -26,6 +27,20 @@ import java.util.List;
  * <p>Alerting is idempotent per asset and window: the threshold is recorded in the event detail,
  * and an existing event for the same asset and threshold suppresses a duplicate, so the job is
  * safe to run repeatedly and a missed day simply folds the asset into the nearest window.</p>
+ *
+ * <h2>Which assets are eligible (issue #943)</h2>
+ *
+ * <p>Only assets still in the operating fleet are alerted on. A warranty date on a
+ * {@link EquipmentStatus#RETIRED} or {@link EquipmentStatus#DISPOSED} asset is historical record,
+ * not something anyone can act on: the device has left the estate through the decommissioning
+ * workflow and the warranty cannot be renewed, so a CRITICAL event about it is pure noise in a feed
+ * whose value depends on every entry being actionable. That noise is also permanent, because the
+ * per-asset/per-threshold suppression marker gets written on the first run.</p>
+ *
+ * <p>The eligibility rule lives in {@link EquipmentStatus#DECOMMISSIONED} and is applied by the
+ * database in {@link EquipmentRepository#findAlertableByWarrantyExpiryBetween}, which also narrows
+ * the scan to the 90-day horizon the thresholds actually cover. The previous implementation loaded
+ * the entire {@code equipment} table across every tenant on each run and filtered in Java.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -35,6 +50,13 @@ public class WarrantyExpiryAlertScheduler {
 
     /** Alert windows, coarsest first. An asset is alerted once per window it falls into. */
     private static final int[] THRESHOLDS = {90, 60, 30, 0};
+
+    /**
+     * How far ahead the job looks, in days. Equal to the coarsest threshold: an asset whose warranty
+     * ends beyond this horizon falls into no window and cannot produce an alert, so there is nothing
+     * to gain by loading it.
+     */
+    private static final int ALERT_HORIZON_DAYS = 90;
 
     private final EquipmentRepository equipmentRepository;
     private final OperationsEventRepository eventRepository;
@@ -47,59 +69,92 @@ public class WarrantyExpiryAlertScheduler {
     @Scheduled(cron = "${app.warranty.alert.cron:0 5 0 * * *}")
     public void runWarrantyAlertGeneration() {
         LocalDate today = LocalDate.now();
+        LocalDate horizon = today.plusDays(ALERT_HORIZON_DAYS);
         int alertsPublished = 0;
+        int candidatesConsidered = 0;
 
-        // The repository scan honours the soft-delete restriction, so archived assets are skipped.
-        List<Equipment> inventory = equipmentRepository.findAll();
-        for (Equipment equipment : inventory) {
-            LocalDate expiry = equipment.getWarrantyExpiry();
-            if (expiry == null || equipment.getHospital() == null) {
+        // Scoped by the database: warranty inside the alert horizon, asset still in service, and
+        // (through the entity's soft-delete restriction) not archived.
+        List<Equipment> candidates = equipmentRepository.findAlertableByWarrantyExpiryBetween(
+                today, horizon, EquipmentStatus.DECOMMISSIONED);
+
+        for (Equipment equipment : candidates) {
+            if (!isAlertable(equipment)) {
                 continue;
             }
-            long daysUntil = ChronoUnit.DAYS.between(today, expiry);
-            if (daysUntil < 0) {
-                continue;
-            }
+            candidatesConsidered++;
+
+            long daysUntil = ChronoUnit.DAYS.between(today, equipment.getWarrantyExpiry());
             Integer threshold = windowFor(daysUntil);
-            if (threshold == null || alreadyAlerted(equipment.getId(), threshold)) {
+            if (threshold == null || alreadyAlerted(
+                    equipment.getId(), equipment.getWarrantyExpiry(), threshold)) {
                 continue;
             }
             publishAlert(equipment, threshold, daysUntil);
             alertsPublished++;
         }
 
-        log.info("Warranty alert run finished: {} alerts published", alertsPublished);
-    }
-
-    /** The coarsest alert window {@code daysUntil} falls into, or {@code null} if none. */
-    private Integer windowFor(long daysUntil) {
-        if (daysUntil == 0) {
-            return 0;
-        }
-        if (daysUntil <= 30) {
-            return 30;
-        }
-        if (daysUntil <= 60) {
-            return 60;
-        }
-        if (daysUntil <= 90) {
-            return 90;
-        }
-        return null;
+        log.info("Warranty alert run finished: {} assets in the {}-day horizon, {} alerts published",
+                candidatesConsidered, ALERT_HORIZON_DAYS, alertsPublished);
     }
 
     /**
-     * Whether this asset already has an event for the given threshold. The threshold is encoded
-     * into the event detail as {@code "threshold":N}, which stays stable across runs.
+     * Belt-and-braces guard for the rule the query already applies.
+     *
+     * <p>The repository restricts the result set by status and date, so in production this never
+     * rejects a row. It stays because the eligibility rule is the whole point of the job and an
+     * in-memory assertion of it costs nothing, while a future caller passing a hand-built list -
+     * or a query someone edits without noticing why the predicate is there - would otherwise put
+     * decommissioned assets straight back into the feed.</p>
      */
-    private boolean alreadyAlerted(Long equipmentId, int threshold) {
-        String marker = "\"threshold\":" + threshold;
+    private boolean isAlertable(Equipment equipment) {
+        if (equipment == null || equipment.getHospital() == null) {
+            return false;
+        }
+        if (equipment.getWarrantyExpiry() == null) {
+            return false;
+        }
+        return equipment.getStatus() == null || equipment.getStatus().isInService();
+    }
+
+    /**
+     * The finest alert window {@code daysUntil} falls into, or {@code null} if none.
+     *
+     * <p>Derived from {@link #THRESHOLDS} rather than a hand-written ladder, so the windows have a
+     * single definition. {@code THRESHOLDS} is ordered coarsest first, so the last threshold the
+     * value still fits inside is the tightest one: 15 days matches 90, then 60, then 30, and stops -
+     * the asset is reported in the 30-day window.</p>
+     */
+    private Integer windowFor(long daysUntil) {
+        if (daysUntil < 0) {
+            // Already expired. The EXPIRED badge on the inventory pages covers these.
+            return null;
+        }
+        Integer window = null;
+        for (int threshold : THRESHOLDS) {
+            if (daysUntil <= threshold) {
+                window = threshold;
+            }
+        }
+        return window;
+    }
+
+    /**
+     * Whether this asset already has an event for the given contract and threshold. Matching both
+     * markers preserves idempotency for repeated runs while allowing a renewed warranty to begin a
+     * fresh alert cycle. Existing events are compatible because they already include both fields.
+     */
+    private boolean alreadyAlerted(Long equipmentId, LocalDate expiry, int threshold) {
+        String thresholdMarker = "\"threshold\":" + threshold;
+        String expiryMarker = "\"expiry\":\"" + expiry + "\"";
         return eventRepository
                 .findByEntityTypeAndEntityIdOrderByCreatedAtDesc(
                         OperationsEvent.EntityType.EQUIPMENT, equipmentId)
                 .stream()
                 .filter(event -> event.getType() == OperationsEvent.EventType.EQUIPMENT_WARRANTY_EXPIRING)
-                .anyMatch(event -> event.getDetail() != null && event.getDetail().contains(marker));
+                .map(OperationsEvent::getDetail)
+                .filter(detail -> detail != null)
+                .anyMatch(detail -> detail.contains(thresholdMarker) && detail.contains(expiryMarker));
     }
 
     private void publishAlert(Equipment equipment, int threshold, long daysUntil) {

@@ -1,7 +1,6 @@
 package com.medtrack.service;
 
-import com.medtrack.auth.model.User;
-import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.auth.security.HospitalAccessGuard;
 import com.medtrack.dto.EquipmentTimelineEntry;
 import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.Equipment;
@@ -40,7 +39,7 @@ public class EquipmentTimelineService {
 
     private final EquipmentRepository equipmentRepository;
     private final HospitalRepository hospitalRepository;
-    private final UserRepository userRepository;
+    private final HospitalAccessGuard hospitalAccessGuard;
     private final EquipmentLifecycleActionRepository lifecycleActionRepository;
     private final MaintenanceTaskRepository maintenanceTaskRepository;
     private final OperationsEventRepository operationsEventRepository;
@@ -257,8 +256,13 @@ public class EquipmentTimelineService {
     }
 
     private Hospital getHospitalForUser(String username) {
-        User user = userRepository.findByEmail(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + username));
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("Username or email is required");
+        }
+        String identifier = username.trim();
+        User user = userRepository.findByUsername(identifier)
+                .or(() -> userRepository.findByEmail(identifier.toLowerCase(java.util.Locale.ROOT)))
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
         return hospitalRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found for user"));
     }

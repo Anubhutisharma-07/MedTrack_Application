@@ -3,17 +3,22 @@ package com.medtrack.service;
 import com.medtrack.auth.model.AccountStatus;
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.MaintenanceScheduleAmendmentRequest;
 import com.medtrack.dto.MaintenanceScheduleRevisionPageResponse;
 import com.medtrack.dto.MaintenanceScheduleRevisionResponse;
 import com.medtrack.exception.InvalidStatusTransitionException;
 import com.medtrack.exception.ResourceNotFoundException;
+import com.medtrack.model.Equipment;
+import com.medtrack.model.EquipmentDisposalStatus;
+import com.medtrack.model.EquipmentStatus;
 import com.medtrack.model.Hospital;
 import com.medtrack.model.MaintenanceScheduleRevision;
 import com.medtrack.model.MaintenancePolicyRule;
 import com.medtrack.model.MaintenanceStatus;
 import com.medtrack.model.MaintenanceTask;
 import com.medtrack.model.SlaState;
+import com.medtrack.repository.EquipmentDisposalRepository;
 import com.medtrack.repository.HospitalRepository;
 import com.medtrack.repository.MaintenancePolicyRuleRepository;
 import com.medtrack.repository.MaintenanceScheduleRevisionRepository;
@@ -40,9 +45,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class MaintenanceScheduleService {
 
-    static final int DEFAULT_REVISION_PAGE_SIZE = 50;
     static final int MAX_REVISION_PAGE_SIZE = 100;
     private static final Set<String> PRIORITIES = Set.of("Normal", "High", "Critical");
+    private final PaginationConfig paginationConfig;
 
     private final MaintenanceTaskRepository taskRepository;
     private final MaintenanceScheduleRevisionRepository revisionRepository;
@@ -50,6 +55,7 @@ public class MaintenanceScheduleService {
     private final UserRepository userRepository;
     private final HospitalRepository hospitalRepository;
     private final MaintenanceActivityService activityService;
+    private final EquipmentDisposalRepository disposalRepository;
 
     @Transactional
     public MaintenanceTask amendSchedule(
@@ -93,8 +99,8 @@ public class MaintenanceScheduleService {
     @Transactional(readOnly = true)
     public MaintenanceScheduleRevisionPageResponse getRevisions(
             Long taskId, Integer page, Integer size, Authentication authentication) {
-        int resolvedPage = page != null ? page : 0;
-        int resolvedSize = size != null ? size : DEFAULT_REVISION_PAGE_SIZE;
+        int resolvedPage = page != null ? page : paginationConfig.getDefaultPage();
+        int resolvedSize = size != null ? size : paginationConfig.getDefaultPageSize();
         validatePage(resolvedPage, resolvedSize);
 
         Long hospitalId = authorizeRevisionRead(taskId, authentication);
@@ -121,6 +127,26 @@ public class MaintenanceScheduleService {
             throw new IllegalStateException(
                     "Maintenance task hospital ownership does not match its equipment");
         }
+        Equipment equipment = task.getEquipmentRecord();
+        if (equipment != null) {
+            if (equipment.getStatus() == EquipmentStatus.RETIRED || equipment.getStatus() == EquipmentStatus.DISPOSED) {
+                throw new IllegalArgumentException("Equipment " + equipment.getEquipmentCode()
+                        + " is " + equipment.getStatus().name().toLowerCase()
+                        + " and cannot have its maintenance schedule amended");
+            }
+            if (disposalRepository != null && task.getHospitalId() != null) {
+                boolean pendingDisposal = disposalRepository
+                        .findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(
+                                equipment.getId(), task.getHospitalId())
+                        .stream()
+                        .anyMatch(disposal -> disposal.getStatus() == EquipmentDisposalStatus.PENDING_APPROVAL
+                                || disposal.getStatus() == EquipmentDisposalStatus.APPROVED);
+                if (pendingDisposal) {
+                    throw new IllegalArgumentException("Equipment " + equipment.getEquipmentCode()
+                            + " has an active disposal request and cannot have its maintenance schedule amended");
+                }
+            }
+        }
     }
 
     private AmendmentValues validateAndResolveValues(
@@ -128,34 +154,46 @@ public class MaintenanceScheduleService {
         if (request.getReason() == null || request.getReason().isBlank()) {
             throw new IllegalArgumentException("Amendment reason is required");
         }
-        if (request.getDeadline() != null && request.getDeadline().isBefore(LocalDate.now())) {
+
+        LocalDate requestedDeadline = request.getDeadline();
+        if (requestedDeadline != null && requestedDeadline.isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("Amended deadline cannot be in the past");
         }
+        LocalDate deadline = requestedDeadline != null ? requestedDeadline : task.getDeadline();
 
-        String maintenanceType = request.getMaintenanceType() == null
-                ? task.getMaintenanceType() : request.getMaintenanceType().trim();
-        if (maintenanceType.isBlank()) {
+        String rawMaintenanceType = request.getMaintenanceType() != null && !request.getMaintenanceType().isBlank()
+                ? request.getMaintenanceType().trim()
+                : (task.getMaintenanceType() != null ? task.getMaintenanceType().trim() : "");
+        if (rawMaintenanceType.isBlank()) {
             throw new IllegalArgumentException("Maintenance type cannot be blank");
         }
+        String maintenanceType = rawMaintenanceType;
 
-        String priority = request.getPriority() == null
-                ? task.getPriority() : normalizePriority(request.getPriority());
-        if (!PRIORITIES.contains(priority)) {
+        String description = request.getDescription() != null
+                ? normalizeNullable(request.getDescription())
+                : task.getDescription();
+
+        String rawPriority = request.getPriority() != null && !request.getPriority().isBlank()
+                ? normalizePriority(request.getPriority())
+                : (task.getPriority() != null ? normalizePriority(task.getPriority()) : "Normal");
+        if (!PRIORITIES.contains(rawPriority)) {
             throw new IllegalArgumentException("Priority must be Normal, High, or Critical");
         }
-        if (request.getRecurrencePeriodDays() != null
-                && request.getRecurrencePeriodDays() < 0) {
-            throw new IllegalArgumentException("Recurrence period cannot be negative");
+        String priority = rawPriority;
+
+        Integer recurrencePeriodDays = request.getRecurrencePeriodDays() != null
+                ? request.getRecurrencePeriodDays()
+                : task.getRecurrencePeriodDays();
+        if (recurrencePeriodDays != null && recurrencePeriodDays < 0) {
+            throw new IllegalArgumentException("Recurrence period days must not be negative");
         }
 
         return new AmendmentValues(
-                request.getDeadline() != null ? request.getDeadline() : task.getDeadline(),
+                deadline,
                 maintenanceType,
-                request.getDescription() != null
-                        ? normalizeNullable(request.getDescription()) : task.getDescription(),
+                description,
                 priority,
-                request.getRecurrencePeriodDays() != null
-                        ? request.getRecurrencePeriodDays() : task.getRecurrencePeriodDays());
+                recurrencePeriodDays);
     }
 
     private List<String> determineChangedFields(

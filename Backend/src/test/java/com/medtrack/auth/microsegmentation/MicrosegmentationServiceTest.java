@@ -28,11 +28,17 @@ public class MicrosegmentationServiceTest {
     @Mock
     private SdpTunnelSessionRepository tunnelRepository;
 
+    @Mock
+    private MicrosegmentationViolationLogRepository violationLogRepository;
+
+    @Mock
+    private com.medtrack.auth.siem.service.SiemLogCorrelationService siemLogCorrelationService;
+
     private MicrosegmentationService microsegmentationService;
 
     @BeforeEach
     void setUp() {
-        microsegmentationService = new MicrosegmentationService(policyRepository, tunnelRepository);
+        microsegmentationService = new MicrosegmentationService(policyRepository, tunnelRepository, violationLogRepository, siemLogCorrelationService);
     }
 
     @Test

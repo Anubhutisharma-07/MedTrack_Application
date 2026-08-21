@@ -12,6 +12,9 @@ import com.medtrack.model.Hospital;
 import com.medtrack.model.Equipment;
 import com.medtrack.model.MaintenanceStatus;
 import com.medtrack.model.MaintenanceTask;
+import com.medtrack.model.EquipmentDisposal;
+import com.medtrack.model.EquipmentDisposalStatus;
+import com.medtrack.repository.EquipmentDisposalRepository;
 import com.medtrack.repository.HospitalRepository;
 import com.medtrack.repository.EquipmentRepository;
 import com.medtrack.repository.MaintenanceTaskRepository;
@@ -57,6 +60,9 @@ public class MaintenanceServiceTest {
 
     @Mock
     private MaintenanceActivityService activityService;
+
+    @Mock
+    private EquipmentDisposalRepository disposalRepository;
 
     @Mock
     private Authentication authentication;
@@ -808,5 +814,360 @@ public class MaintenanceServiceTest {
 
         assertThrows(ResourceNotFoundException.class, () -> maintenanceService.getTaskActivity(
                 99L, null, null, null, authentication));
+    }
+
+    @Test
+    void scheduleTask_PastDeadline_ThrowsException() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Preventive")
+                .deadline(LocalDate.now().minusDays(1))
+                .priority("Normal")
+                .build();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> maintenanceService.scheduleTask(request, authentication));
+        assertEquals("Deadline cannot be in the past", ex.getMessage());
+    }
+
+    @Test
+    void scheduleTask_FutureDeadline_Accepted() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("EQ-100")).thenReturn(Optional.of(mockEquipment));
+        when(taskRepository.save(any(MaintenanceTask.class))).thenAnswer(i -> i.getArgument(0));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Preventive")
+                .deadline(LocalDate.now().plusDays(10))
+                .priority("Normal")
+                .build();
+        MaintenanceTask result = maintenanceService.scheduleTask(request, authentication);
+        assertNotNull(result);
+    }
+
+    @Test
+    void scheduleTask_NullDeadline_ThrowsException() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Preventive")
+                .deadline(null)
+                .priority("Normal")
+                .build();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> maintenanceService.scheduleTask(request, authentication));
+        assertEquals("Deadline is required", ex.getMessage());
+    }
+
+    @Test
+    void amendSchedule_PastDeadline_ThrowsException() {
+
+        com.medtrack.dto.MaintenanceScheduleAmendmentRequest request = com.medtrack.dto.MaintenanceScheduleAmendmentRequest.builder()
+                .newDeadline(LocalDate.now().minusDays(1))
+                .reason("Test")
+                .build();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> maintenanceService.amendSchedule(50L, request, authentication));
+        assertEquals("Deadline cannot be in the past", ex.getMessage());
+    }
+
+    @Test
+    void amendSchedule_NullDeadline_ThrowsException() {
+        com.medtrack.dto.MaintenanceScheduleAmendmentRequest request = com.medtrack.dto.MaintenanceScheduleAmendmentRequest.builder()
+                .newDeadline(null)
+                .reason("Test")
+                .build();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> maintenanceService.amendSchedule(50L, request, authentication));
+        assertEquals("New deadline is required", ex.getMessage());
+    }
+
+    @Test
+    void scheduleTask_RejectsWhenEquipmentHasPendingDisposalApproval() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("EQ-100")).thenReturn(Optional.of(mockEquipment));
+
+        EquipmentDisposal pendingDisposal = EquipmentDisposal.builder()
+                .id(200L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.PENDING_APPROVAL)
+                .requestedBy("staff@medtrack.com")
+                .requestedAt(java.time.LocalDateTime.now())
+                .build();
+
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(List.of(pendingDisposal));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Preventive Maintenance")
+                .deadline(LocalDate.now().plusDays(5))
+                .priority("High")
+                .build();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> maintenanceService.scheduleTask(request, authentication)
+        );
+
+        assertTrue(exception.getMessage().contains("has an active disposal request awaiting approval or completion"));
+        assertTrue(exception.getMessage().contains("EQ-100"));
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleTask_RejectsWhenEquipmentHasApprovedDisposal() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("EQ-100")).thenReturn(Optional.of(mockEquipment));
+
+        EquipmentDisposal approvedDisposal = EquipmentDisposal.builder()
+                .id(201L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.APPROVED)
+                .approvedBy("admin@medtrack.com")
+                .approvedAt(java.time.LocalDateTime.now())
+                .build();
+
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(List.of(approvedDisposal));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Calibration")
+                .deadline(LocalDate.now().plusDays(3))
+                .priority("Critical")
+                .build();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> maintenanceService.scheduleTask(request, authentication)
+        );
+
+        assertTrue(exception.getMessage().contains("has an active disposal request awaiting approval or completion"));
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleTask_SucceedsWhenEquipmentDisposalIsRejected() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("EQ-100")).thenReturn(Optional.of(mockEquipment));
+
+        EquipmentDisposal rejectedDisposal = EquipmentDisposal.builder()
+                .id(202L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.REJECTED)
+                .rejectedReason("Budget available for repairs")
+                .build();
+
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(List.of(rejectedDisposal));
+        when(taskRepository.save(any(MaintenanceTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Emergency Repair")
+                .deadline(LocalDate.now().plusDays(1))
+                .priority("Critical")
+                .build();
+
+        MaintenanceTask scheduledTask = maintenanceService.scheduleTask(request, authentication);
+
+        assertNotNull(scheduledTask);
+        assertEquals("EQ-100", scheduledTask.getEquipmentId());
+        assertEquals("Emergency Repair", scheduledTask.getMaintenanceType());
+        verify(taskRepository, times(1)).save(any(MaintenanceTask.class));
+    }
+
+    @Test
+    void scheduleTask_SucceedsWhenEquipmentDisposalIsCancelled() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("EQ-100")).thenReturn(Optional.of(mockEquipment));
+
+        EquipmentDisposal cancelledDisposal = EquipmentDisposal.builder()
+                .id(203L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.CANCELLED)
+                .cancelledBy("user@medtrack.com")
+                .build();
+
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(List.of(cancelledDisposal));
+        when(taskRepository.save(any(MaintenanceTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Inspection")
+                .deadline(LocalDate.now().plusDays(2))
+                .priority("Normal")
+                .build();
+
+        MaintenanceTask scheduledTask = maintenanceService.scheduleTask(request, authentication);
+
+        assertNotNull(scheduledTask);
+        assertEquals("Inspection", scheduledTask.getMaintenanceType());
+        verify(taskRepository, times(1)).save(any(MaintenanceTask.class));
+    }
+
+    @Test
+    void scheduleTask_SucceedsByNumericIdWhenNoActiveDisposalExists() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("100")).thenReturn(Optional.empty());
+        when(equipmentRepository.findByIdAndHospitalId(100L, 10L)).thenReturn(Optional.of(mockEquipment));
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(Collections.emptyList());
+        when(taskRepository.save(any(MaintenanceTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("100")
+                .maintenanceType("Routine Check")
+                .deadline(LocalDate.now().plusDays(4))
+                .priority("Normal")
+                .build();
+
+        MaintenanceTask scheduledTask = maintenanceService.scheduleTask(request, authentication);
+
+        assertNotNull(scheduledTask);
+        assertEquals("EQ-100", scheduledTask.getEquipmentId());
+        verify(taskRepository, times(1)).save(any(MaintenanceTask.class));
+    }
+
+    @Test
+    void scheduleTask_RejectsByNumericIdWhenEquipmentHasPendingDisposal() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("100")).thenReturn(Optional.empty());
+        when(equipmentRepository.findByIdAndHospitalId(100L, 10L)).thenReturn(Optional.of(mockEquipment));
+
+        EquipmentDisposal pendingDisposal = EquipmentDisposal.builder()
+                .id(204L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.PENDING_APPROVAL)
+                .build();
+
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(List.of(pendingDisposal));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("100")
+                .maintenanceType("Preventive Maintenance")
+                .deadline(LocalDate.now().plusDays(7))
+                .priority("High")
+                .build();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> maintenanceService.scheduleTask(request, authentication)
+        );
+
+        assertTrue(exception.getMessage().contains("has an active disposal request awaiting approval or completion"));
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleTask_RejectsWhenMultipleDisposalsExistAndLatestIsPending() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("EQ-100")).thenReturn(Optional.of(mockEquipment));
+
+        EquipmentDisposal oldRejectedDisposal = EquipmentDisposal.builder()
+                .id(205L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.REJECTED)
+                .requestedAt(java.time.LocalDateTime.now().minusDays(30))
+                .build();
+
+        EquipmentDisposal latestPendingDisposal = EquipmentDisposal.builder()
+                .id(206L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.PENDING_APPROVAL)
+                .requestedAt(java.time.LocalDateTime.now().minusDays(1))
+                .build();
+
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(List.of(latestPendingDisposal, oldRejectedDisposal));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Routine Check")
+                .deadline(LocalDate.now().plusDays(10))
+                .priority("Normal")
+                .build();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> maintenanceService.scheduleTask(request, authentication)
+        );
+
+        assertTrue(exception.getMessage().contains("has an active disposal request awaiting approval or completion"));
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleTask_SucceedsWhenMultipleDisposalsExistAndAllAreClosed() {
+        when(authentication.getName()).thenReturn(email);
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(mockUser));
+        when(hospitalRepository.findByUserId(mockUser.getId())).thenReturn(Optional.of(mockHospital));
+        when(equipmentRepository.findByEquipmentCode("EQ-100")).thenReturn(Optional.of(mockEquipment));
+
+        EquipmentDisposal oldRejected = EquipmentDisposal.builder()
+                .id(209L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.REJECTED)
+                .requestedAt(java.time.LocalDateTime.now().minusDays(90))
+                .build();
+
+        EquipmentDisposal latestCancelled = EquipmentDisposal.builder()
+                .id(210L)
+                .equipment(mockEquipment)
+                .hospital(mockHospital)
+                .status(EquipmentDisposalStatus.CANCELLED)
+                .requestedAt(java.time.LocalDateTime.now().minusDays(10))
+                .build();
+
+        when(disposalRepository.findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(100L, 10L))
+                .thenReturn(List.of(latestCancelled, oldRejected));
+        when(taskRepository.save(any(MaintenanceTask.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MaintenanceCreateRequest request = MaintenanceCreateRequest.builder()
+                .equipmentId("EQ-100")
+                .maintenanceType("Annual Servicing")
+                .deadline(LocalDate.now().plusDays(15))
+                .priority("High")
+                .build();
+
+        MaintenanceTask scheduledTask = maintenanceService.scheduleTask(request, authentication);
+
+        assertNotNull(scheduledTask);
+        assertEquals("Annual Servicing", scheduledTask.getMaintenanceType());
+        verify(taskRepository, times(1)).save(any(MaintenanceTask.class));
     }
 }

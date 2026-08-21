@@ -9,6 +9,7 @@ import com.medtrack.auth.dto.VerifyOtpRequest;
 import com.medtrack.auth.model.AccountStatus;
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.PasswordResetTokenRepository;
+import com.medtrack.auth.repository.RefreshTokenRepository;
 import com.medtrack.auth.repository.UserRepository;
 import com.medtrack.auth.service.KafkaEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,8 +32,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -54,6 +57,18 @@ public class AuthControllerIntegrationTest {
     private PasswordResetTokenRepository passwordResetTokenRepository;
 
     @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
+    private com.medtrack.repository.MaintenanceTaskRepository maintenanceTaskRepository;
+
+    @Autowired
+    private com.medtrack.repository.EquipmentRepository equipmentRepository;
+
+    @Autowired
+    private com.medtrack.repository.HospitalRepository hospitalRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -65,6 +80,10 @@ public class AuthControllerIntegrationTest {
     @BeforeEach
     void cleanDatabase() {
         passwordResetTokenRepository.deleteAll();
+        refreshTokenRepository.deleteAll();
+        maintenanceTaskRepository.deleteAll();
+        equipmentRepository.deleteAll();
+        hospitalRepository.deleteAll();
         userRepository.deleteAll();
     }
 
@@ -77,7 +96,7 @@ public class AuthControllerIntegrationTest {
                 .phone("9876543210")
                 .password("Password123")
                 .confirmPassword("Password123")
-                .role("HOSPITAL")
+                .role("SUPPLIER")
                 .build();
 
         MvcResult regResult = mockMvc.perform(post("/api/auth/register")
@@ -101,7 +120,7 @@ public class AuthControllerIntegrationTest {
         assertEquals("Integration Test User", user.getName());
         assertEquals("Integration Test Hospital", user.getOrganization());
         assertEquals("9876543210", user.getPhone());
-        assertEquals("HOSPITAL", user.getRole());
+        assertEquals("SUPPLIER", user.getRole());
         assertTrue(passwordEncoder.matches("Password123", user.getPassword()));
 
         verify(kafkaEventPublisher, times(1))
@@ -110,7 +129,7 @@ public class AuthControllerIntegrationTest {
         LoginRequest loginRequest = new LoginRequest(
                 "integtest@medtrack.com",
                 "Password123",
-                "HOSPITAL"
+                "SUPPLIER"
         );
 
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
@@ -128,6 +147,80 @@ public class AuthControllerIntegrationTest {
 
         verify(kafkaEventPublisher, times(1))
                 .publishUserLogin(any());
+    }
+
+    @Test
+    void publicRegistrationWithoutRoleUsesSafeTechnicianDefault() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .name("Default Role User")
+                .organization("Clinical Engineering")
+                .email("default-role@medtrack.com")
+                .phone("9876543212")
+                .password("Password123")
+                .confirmPassword("Password123")
+                .build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("TECHNICIAN"))
+                .andExpect(jsonPath("$.user.role").value("TECHNICIAN"))
+                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.refreshToken").isNotEmpty());
+
+        User savedUser = userRepository.findByEmail("default-role@medtrack.com")
+                .orElseThrow();
+        assertEquals("TECHNICIAN", savedUser.getRole());
+        assertEquals(1L, refreshTokenRepository.count());
+    }
+
+    @Test
+    void anonymousCallerCannotRegisterHospitalAdministrator() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .name("Untrusted User")
+                .organization("Untrusted Organization")
+                .email("untrusted@medtrack.com")
+                .phone("9876543299")
+                .password("Password123")
+                .confirmPassword("Password123")
+                .role("HOSPITAL")
+                .build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        "HOSPITAL accounts cannot be created through public registration"));
+
+        assertFalse(userRepository.existsByEmail("untrusted@medtrack.com"));
+        assertEquals(0L, refreshTokenRepository.count());
+        verifyNoInteractions(kafkaEventPublisher);
+    }
+
+    @Test
+    void mixedCaseHospitalRoleCannotBypassPublicRegistrationPolicy() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .name("Untrusted User")
+                .organization("Untrusted Organization")
+                .email("mixed-case@medtrack.com")
+                .phone("9876543298")
+                .password("Password123")
+                .confirmPassword("Password123")
+                .role("  hOsPiTaL  ")
+                .build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        "HOSPITAL accounts cannot be created through public registration"));
+
+        assertEquals(0L, userRepository.count());
+        assertEquals(0L, refreshTokenRepository.count());
+        verifyNoInteractions(kafkaEventPublisher);
     }
 
     @Test

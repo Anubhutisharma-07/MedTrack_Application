@@ -427,7 +427,7 @@ class MaintenanceControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalid)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.detail").value("Validation failed"))
                 .andExpect(jsonPath("$.errors.equipmentId").exists())
                 .andExpect(jsonPath("$.errors.maintenanceType").exists())
                 .andExpect(jsonPath("$.errors.deadline").exists())
@@ -444,7 +444,7 @@ class MaintenanceControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalid)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.detail").value("Validation failed"))
                 .andExpect(jsonPath("$.errors.description")
                         .value("Description must not exceed 255 characters"));
 
@@ -471,7 +471,7 @@ class MaintenanceControllerIntegrationTest {
                                 {"notes":"Inspection started"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.detail").value("Validation failed"))
                 .andExpect(jsonPath("$.errors.status").value("Status is required"));
 
         verify(maintenanceService, never()).updateTask(any(), any(), any());
@@ -486,7 +486,7 @@ class MaintenanceControllerIntegrationTest {
                                 {"status":"In Progress","hoursWorked":-1}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.detail").value("Validation failed"))
                 .andExpect(jsonPath("$.errors.hoursWorked").value("Hours worked cannot be negative"));
 
         verify(maintenanceService, never()).updateTask(any(), any(), any());
@@ -506,7 +506,7 @@ class MaintenanceControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(update)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
+                .andExpect(jsonPath("$.detail")
                         .value("Cannot change maintenance status from Scheduled to Completed"));
     }
 
@@ -515,7 +515,7 @@ class MaintenanceControllerIntegrationTest {
     void nonPositiveResourceIdReturns400() throws Exception {
         mockMvc.perform(get("/api/maintenance/0"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Invalid resource ID."));
+                .andExpect(jsonPath("$.detail").value("Invalid resource ID."));
 
         verify(maintenanceService, never()).getTaskById(any(), any());
     }

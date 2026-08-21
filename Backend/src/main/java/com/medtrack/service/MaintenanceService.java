@@ -3,6 +3,7 @@ package com.medtrack.service;
 import com.medtrack.auth.model.AccountStatus;
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.MaintenanceAssignmentRequest;
 import com.medtrack.dto.MaintenanceActivityPageResponse;
 import com.medtrack.dto.MaintenanceCreateRequest;
@@ -14,6 +15,8 @@ import com.medtrack.model.EquipmentStatus;
 import com.medtrack.model.Hospital;
 import com.medtrack.model.MaintenanceStatus;
 import com.medtrack.model.MaintenanceTask;
+import com.medtrack.model.EquipmentDisposalStatus;
+import com.medtrack.repository.EquipmentDisposalRepository;
 import com.medtrack.repository.EquipmentRepository;
 import com.medtrack.repository.HospitalRepository;
 import com.medtrack.repository.MaintenanceTaskRepository;
@@ -24,9 +27,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.medtrack.repository.MaintenanceTaskScheduleAmendmentRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -39,13 +43,17 @@ import java.util.Optional;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import com.medtrack.dto.MaintenanceScheduleAmendmentRequest;
+import com.medtrack.dto.MaintenanceScheduleAmendmentResponse;
+import com.medtrack.model.MaintenanceTaskScheduleAmendment;
 
 @Service
 @RequiredArgsConstructor
 public class MaintenanceService {
 
+    private final MaintenanceTaskScheduleAmendmentRepository
+            scheduleAmendmentRepository;
     private static final int ICAL_MAX_LINE_OCTETS = 75;
-    private static final int DEFAULT_PAGE_SIZE = 50;
     private static final int MAX_PAGE_SIZE = 100;
     private static final DateTimeFormatter ICAL_UTC_TIMESTAMP =
             DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
@@ -55,6 +63,8 @@ public class MaintenanceService {
     private final HospitalRepository hospitalRepository;
     private final EquipmentRepository equipmentRepository;
     private final MaintenanceActivityService activityService;
+    private final EquipmentDisposalRepository disposalRepository;
+    private final PaginationConfig paginationConfig;
 
     // The lifecycle is centralized here so every update path follows the same rules.
     private static final Map<MaintenanceStatus, Set<MaintenanceStatus>> ALLOWED_TRANSITIONS = Map.of(
@@ -115,6 +125,8 @@ public class MaintenanceService {
         Equipment equipment = resolveOwnedEquipment(request.getEquipmentId().trim(), hospital.getId());
         User assignedTechnician = resolveEligibleTechnician(request.getAssignedTechnician());
 
+        validateNoDuplicateActiveTask(hospital.getId(), equipment, request.getMaintenanceType().trim());
+
         MaintenanceTask task = MaintenanceTask.builder()
                 .taskCode("MNT-" + UUID.randomUUID())
                 .equipmentId(equipment.getEquipmentCode())
@@ -174,6 +186,107 @@ public class MaintenanceService {
     }
 
     @Transactional
+    public MaintenanceTask amendSchedule(
+            Long id,
+            MaintenanceScheduleAmendmentRequest request,
+            Authentication authentication) {
+
+        if (request == null) {
+            throw new IllegalArgumentException("Schedule amendment request is required");
+        }
+
+        if (request.getNewDeadline() == null) {
+            throw new IllegalArgumentException("New deadline is required");
+        }
+
+        if (request.getNewDeadline().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Deadline cannot be in the past");
+        }
+
+        if (request.getReason() == null || request.getReason().isBlank()) {
+            throw new IllegalArgumentException("Amendment reason is required");
+        }
+
+        Hospital hospital = getHospitalForUser(authentication);
+
+        MaintenanceTask task = taskRepository.findByIdAndHospitalIdForUpdate(
+                        id, hospital.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Maintenance task not found or access denied"));
+
+        validateOwnershipInvariant(task);
+
+        if (task.getStatus() == MaintenanceStatus.COMPLETED) {
+            throw new InvalidStatusTransitionException(
+                    "Completed maintenance tasks cannot be rescheduled");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+
+        LocalDate previousDeadline = task.getDeadline();
+        Integer previousRevision = task.getScheduleRevision() != null
+                ? task.getScheduleRevision()
+                : 0;
+
+        if (Objects.equals(previousDeadline, request.getNewDeadline())) {
+            throw new IllegalArgumentException(
+                    "New deadline must be different from the current deadline");
+        }
+
+        Integer newRevision = previousRevision + 1;
+
+        task.setDeadline(request.getNewDeadline());
+        task.setScheduleRevision(newRevision);
+
+        MaintenanceTask savedTask = taskRepository.save(task);
+
+        MaintenanceTaskScheduleAmendment amendment =
+                MaintenanceTaskScheduleAmendment.builder()
+                        .maintenanceTaskId(savedTask.getId())
+                        .hospitalId(hospital.getId())
+                        .previousDeadline(previousDeadline)
+                        .newDeadline(savedTask.getDeadline())
+                        .previousScheduleRevision(previousRevision)
+                        .newScheduleRevision(newRevision)
+                        .actor(authentication.getName().trim().toLowerCase(Locale.ROOT))
+                        .reason(request.getReason().trim())
+                        .createdAt(now)
+                        .build();
+
+        scheduleAmendmentRepository.save(amendment);
+
+        activityService.recordSystemCreated(
+                savedTask,
+                "schedule amended from "
+                        + previousDeadline
+                        + " to "
+                        + savedTask.getDeadline()
+                        + " by "
+                        + amendment.getActor());
+
+        return savedTask;
+    }
+
+    @Transactional(readOnly = true)
+    public List<MaintenanceScheduleAmendmentResponse> getScheduleAmendmentHistory(
+            Long id,
+            Authentication authentication) {
+
+        Hospital hospital = getHospitalForUser(authentication);
+
+        taskRepository.findByIdAndHospitalId(id, hospital.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Maintenance task not found or access denied"));
+
+        return scheduleAmendmentRepository
+                .findByMaintenanceTaskIdAndHospitalIdOrderByCreatedAtDesc(
+                        id,
+                        hospital.getId())
+                .stream()
+                .map(MaintenanceScheduleAmendmentResponse::from)
+                .toList();
+    }
+    @Transactional
     public MaintenanceTask updateTask(Long id, MaintenanceUpdateRequest request, Authentication authentication) {
         // A technician can update only a task linked to their stable authenticated user ID.
         User technician = getAuthenticatedTechnician(authentication);
@@ -224,29 +337,40 @@ public class MaintenanceService {
                 && savedTask.getRecurrencePeriodDays() > 0
                 && isEquipmentEligibleForRecurrence(savedTask)) {
 
-            User recurringTechnician = resolveRecurringTechnician(savedTask);
-            MaintenanceTask nextTask = MaintenanceTask.builder()
-                    .taskCode("MNT-" + UUID.randomUUID())
-                    .equipmentId(savedTask.getEquipmentId())
-                    .equipment(savedTask.getEquipment())
-                    .equipmentRecord(savedTask.getEquipmentRecord())
-                    .hospital(savedTask.getHospital())
-                    .hospitalId(savedTask.getHospitalId())
-                    .maintenanceType(savedTask.getMaintenanceType() != null ? savedTask.getMaintenanceType() : "Recurring Preventive Maintenance")
-                    .deadline(java.time.LocalDate.now().plusDays(savedTask.getRecurrencePeriodDays()))
-                    .assignedTechnician(recurringTechnician != null ? recurringTechnician.getEmail() : null)
-                    .assignedTechnicianRecord(recurringTechnician)
-                    .description("Auto-scheduled recurring maintenance task based on completion of task: " + savedTask.getTaskCode())
-                    .priority(savedTask.getPriority())
-                    .status(MaintenanceStatus.SCHEDULED)
-                    .recurrencePeriodDays(savedTask.getRecurrencePeriodDays())
-                    .createdAt(LocalDateTime.now())
-                    .build();
+            String nextType = savedTask.getMaintenanceType() != null ? savedTask.getMaintenanceType().trim() : "Recurring Preventive Maintenance";
+            boolean hasDuplicate = savedTask.getEquipmentRecord() != null && taskRepository.existsActiveTaskForEquipmentWithCode(
+                    savedTask.getHospitalId(),
+                    savedTask.getEquipmentRecord().getId(),
+                    savedTask.getEquipmentId(),
+                    nextType,
+                    List.of(MaintenanceStatus.SCHEDULED, MaintenanceStatus.IN_PROGRESS, MaintenanceStatus.NEEDS_PART, MaintenanceStatus.ON_HOLD)
+            );
 
-            validateOwnershipInvariant(nextTask);
-            MaintenanceTask savedNextTask = taskRepository.save(nextTask);
-            activityService.recordCreated(
-                    savedNextTask, technician, "from recurring task " + savedTask.getTaskCode());
+            if (!hasDuplicate) {
+                User recurringTechnician = resolveRecurringTechnician(savedTask);
+                MaintenanceTask nextTask = MaintenanceTask.builder()
+                        .taskCode("MNT-" + UUID.randomUUID())
+                        .equipmentId(savedTask.getEquipmentId())
+                        .equipment(savedTask.getEquipment())
+                        .equipmentRecord(savedTask.getEquipmentRecord())
+                        .hospital(savedTask.getHospital())
+                        .hospitalId(savedTask.getHospitalId())
+                        .maintenanceType(nextType)
+                        .deadline(java.time.LocalDate.now().plusDays(savedTask.getRecurrencePeriodDays()))
+                        .assignedTechnician(recurringTechnician != null ? recurringTechnician.getEmail() : null)
+                        .assignedTechnicianRecord(recurringTechnician)
+                        .description("Auto-scheduled recurring maintenance task based on completion of task: " + savedTask.getTaskCode())
+                        .priority(savedTask.getPriority())
+                        .status(MaintenanceStatus.SCHEDULED)
+                        .recurrencePeriodDays(savedTask.getRecurrencePeriodDays())
+                        .createdAt(LocalDateTime.now())
+                        .build();
+
+                validateOwnershipInvariant(nextTask);
+                MaintenanceTask savedNextTask = taskRepository.save(nextTask);
+                activityService.recordCreated(
+                        savedNextTask, technician, "from recurring task " + savedTask.getTaskCode());
+            }
         }
 
         return savedTask;
@@ -296,6 +420,9 @@ public class MaintenanceService {
         if (request.getDeadline() == null) {
             throw new IllegalArgumentException("Deadline is required");
         }
+        if (request.getDeadline().isBefore(java.time.LocalDate.now())) {
+            throw new IllegalArgumentException("Deadline cannot be in the past");
+        }
         if (request.getMaintenanceType() == null || request.getMaintenanceType().isBlank()) {
             throw new IllegalArgumentException("Maintenance type is required");
         }
@@ -304,6 +431,31 @@ public class MaintenanceService {
         }
         if (request.getRecurrencePeriodDays() != null && request.getRecurrencePeriodDays() < 0) {
             throw new IllegalArgumentException("Recurrence period cannot be negative");
+        }
+    }
+
+    private void validateNoDuplicateActiveTask(Long hospitalId, Equipment equipment, String maintenanceType) {
+        if (hospitalId == null || equipment == null || maintenanceType == null || maintenanceType.isBlank()) {
+            return;
+        }
+        List<MaintenanceStatus> activeStatuses = List.of(
+                MaintenanceStatus.SCHEDULED,
+                MaintenanceStatus.IN_PROGRESS,
+                MaintenanceStatus.NEEDS_PART,
+                MaintenanceStatus.ON_HOLD
+        );
+        String normalizedType = maintenanceType.trim();
+        boolean duplicateExists = taskRepository.existsActiveTaskForEquipmentWithCode(
+                hospitalId,
+                equipment.getId(),
+                equipment.getEquipmentCode(),
+                normalizedType,
+                activeStatuses
+        );
+        if (duplicateExists) {
+            throw new IllegalArgumentException(
+                    "An active maintenance task of type '" + normalizedType
+                            + "' already exists for equipment '" + equipment.getEquipmentCode() + "'");
         }
     }
 
@@ -327,8 +479,8 @@ public class MaintenanceService {
             return Pageable.unpaged();
         }
 
-        int resolvedPage = page != null ? page : 0;
-        int resolvedSize = size != null ? size : DEFAULT_PAGE_SIZE;
+        int resolvedPage = page != null ? page : paginationConfig.getDefaultPage();
+        int resolvedSize = size != null ? size : paginationConfig.getDefaultPageSize();
         if (resolvedPage < 0) {
             throw new IllegalArgumentException("Page index cannot be negative");
         }
@@ -360,7 +512,22 @@ public class MaintenanceService {
         if (equipment.getStatus() == EquipmentStatus.RETIRED || equipment.getStatus() == EquipmentStatus.DISPOSED) {
             throw new IllegalArgumentException("Retired or disposed equipment cannot be scheduled for maintenance");
         }
+        validateNoActiveDisposal(equipment, hospitalId);
         return equipment;
+    }
+
+    private void validateNoActiveDisposal(Equipment equipment, Long hospitalId) {
+        if (disposalRepository != null && equipment != null && equipment.getId() != null && hospitalId != null) {
+            boolean pendingDisposal = disposalRepository
+                    .findByEquipmentIdAndHospitalIdOrderByRequestedAtDesc(equipment.getId(), hospitalId)
+                    .stream()
+                    .anyMatch(disposal -> disposal.getStatus() == EquipmentDisposalStatus.PENDING_APPROVAL
+                            || disposal.getStatus() == EquipmentDisposalStatus.APPROVED);
+            if (pendingDisposal) {
+                throw new IllegalArgumentException("Equipment " + equipment.getEquipmentCode()
+                        + " has an active disposal request awaiting approval or completion and cannot be scheduled for maintenance");
+            }
+        }
     }
 
     private Equipment resolveOwnedEquipmentByNumericId(String equipmentReference, Long hospitalId) {

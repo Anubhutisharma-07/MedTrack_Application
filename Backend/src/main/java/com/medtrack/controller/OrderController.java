@@ -1,5 +1,6 @@
 package com.medtrack.controller;
 
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.PagedResponse;
 import com.medtrack.model.EquipmentOrder;
 import com.medtrack.dto.PlaceOrderRequest;
@@ -8,8 +9,9 @@ import com.medtrack.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -19,6 +21,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.data.domain.Sort;
 
@@ -34,6 +37,7 @@ import org.springframework.data.domain.Sort;
 public class OrderController {
 
     private final OrderService orderService;
+    private final PaginationConfig paginationConfig;
 
     /**
      * Retrieves a paginated list of equipment orders.
@@ -43,8 +47,33 @@ public class OrderController {
      */
     @GetMapping
     public ResponseEntity<PagedResponse<EquipmentOrder>> getAllOrders(
-            @PageableDefault(sort = "orderDate") Pageable pageable) {
-        return ResponseEntity.ok(PagedResponse.of(orderService.getAllOrders(pageable)));
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+
+        int actualPage = page != null ? page : paginationConfig.getDefaultPage();
+        int actualSize = size != null ? size : paginationConfig.getDefaultPageSize();
+
+        if (actualPage < 0 || actualSize <= 0) {
+            throw new IllegalArgumentException("Page number must be >= 0 and page size must be > 0");
+        }
+        if (actualSize > 100) {
+            throw new IllegalArgumentException("Page size must not exceed 100");
+        }
+
+        Pageable pageable = PageRequest.of(actualPage, actualSize, Sort.by("orderDate"));
+
+        Set<String> allowedSortProperties = Set.of(
+                "id", "orderCode", "equipmentName", "quantity",
+                "unitCost", "totalCost", "status", "orderDate", "shippingStatus");
+
+        for (Sort.Order order : pageable.getSort()) {
+            if (!allowedSortProperties.contains(order.getProperty())) {
+                throw new IllegalArgumentException("Invalid sort property: " + order.getProperty());
+            }
+        }
+
+        return ResponseEntity.ok(PagedResponse.of(orderService.getAllOrders(status, pageable)));
     }
 
     /**
@@ -207,7 +236,11 @@ public class OrderController {
     @GetMapping("/archived")
     @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<Page<EquipmentOrder>> getArchivedOrders(
-            @PageableDefault(sort = "deletedAt", direction = Sort.Direction.DESC) Pageable pageable) {
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        int actualPage = page != null ? page : paginationConfig.getDefaultPage();
+        int actualSize = size != null ? size : paginationConfig.getDefaultPageSize();
+        Pageable pageable = PageRequest.of(actualPage, actualSize, Sort.by(Sort.Direction.DESC, "deletedAt"));
         return ResponseEntity.ok(orderService.getArchivedOrders(pageable));
     }
 

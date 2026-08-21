@@ -18,8 +18,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import java.security.Principal;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.Map;
+import com.medtrack.auth.dto.UserResponse;
 
 /**
  * =================================================================================================
@@ -435,5 +440,45 @@ public class AuthController {
         userService.resetPassword(request);
         // Responds with a success message confirming the operation's completion.
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
+    }
+
+    /**
+     * Archives a user account (soft delete).
+     *
+     * @param id the ID of the user to archive
+     * @param principal the authenticated user making the request
+     * @return the archived user details
+     */
+    @PostMapping("/user/{id}/archive")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponse> archiveUser(@PathVariable Long id, Principal principal) {
+        com.medtrack.auth.model.User archived = userService.archiveUser(id, principal.getName());
+        return ResponseEntity.ok(mapToUserResponse(archived));
+    }
+
+    /**
+     * Retrieves all archived user accounts.
+     * Accessible only to ADMIN users.
+     *
+     * @return list of archived users
+     */
+    @GetMapping("/user/archived")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<UserResponse>> getArchivedUsers() {
+        List<UserResponse> archivedUsers = userService.getArchivedUsers().stream()
+                .map(this::mapToUserResponse)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(archivedUsers);
+    }
+
+    private UserResponse mapToUserResponse(com.medtrack.auth.model.User user) {
+        return UserResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .organization(user.getOrganization())
+                .role(user.getRole())
+                .build();
     }
 }

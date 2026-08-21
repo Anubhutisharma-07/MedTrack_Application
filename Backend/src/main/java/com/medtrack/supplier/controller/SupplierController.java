@@ -1,6 +1,8 @@
 package com.medtrack.supplier.controller;
 
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.model.EquipmentOrder;
+import com.medtrack.supplier.dto.BulkStatusUpdateRequest;
 import com.medtrack.supplier.dto.SupplierPerformanceResponse;
 import com.medtrack.supplier.security.SupplierAccessGuard;
 import com.medtrack.supplier.service.SupplierOrderService;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -24,16 +27,18 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/api/supplier")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
+@Slf4j
+@CrossOrigin(origins = "http://localhost:3000")
 @Tag(name = "Supplier Orders", description = "Endpoints for suppliers to query and retrieve localized equipment purchase orders.")
 public class SupplierController {
 
     private final SupplierOrderService supplierOrderService;
     private final SupplierPerformanceService supplierPerformanceService;
     private final SupplierAccessGuard supplierAccessGuard;
+    private final PaginationConfig paginationConfig;
 
     @GetMapping("/orders")
-    @PreAuthorize("hasAnyRole('HOSPITAL', 'SUPPLIER')")
+    @PreAuthorize("hasRole('SUPPLIER')")
     @Operation(summary = "Get paginated, filtered supplier orders", description = "Allows suppliers to search and filter through synchronized equipment purchase orders. Suppliers only ever see their own orders; HOSPITAL admins may filter by any supplier.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved orders", content = @Content(schema = @Schema(implementation = Page.class))),
@@ -41,8 +46,8 @@ public class SupplierController {
             @ApiResponse(responseCode = "400", description = "Invalid request arguments or filter properties")
     })
     public ResponseEntity<Page<EquipmentOrder>> getSupplierOrders(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             @RequestParam(defaultValue = "orderDate") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(required = false) String status,
@@ -66,8 +71,11 @@ public class SupplierController {
             effectiveSupplierId = supplierAccessGuard.resolveCallerId(authentication);
         }
 
+        int actualPage = page != null ? page : paginationConfig.getDefaultPage();
+        int actualSize = size != null ? size : paginationConfig.getDefaultPageSize();
+
         Page<EquipmentOrder> orders = supplierOrderService.getSupplierOrders(
-                page, size, sortBy, sortDir, status, shippingStatus, effectiveSupplierId, search,
+                actualPage, actualSize, sortBy, sortDir, status, shippingStatus, effectiveSupplierId, search,
                 deliveryStatus, isDelayed, trackingNumber, startDate, endDate);
 
                 if (orders.isEmpty()) {
@@ -93,6 +101,25 @@ public class SupplierController {
         EquipmentOrder updatedOrder = supplierOrderService.updateOrderStatus(orderId, newStatus, authentication);
         return ResponseEntity.ok(updatedOrder);
     }
+
+        @PutMapping("/orders/bulk-status")
+        @PreAuthorize("hasRole('SUPPLIER')")
+        @Operation(summary = "Bulk update supplier order status", description = "Updates order status for multiple orders simultaneously.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Successfully updated order statuses", content = @Content(schema = @Schema(implementation = java.util.List.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid request or status transitions")
+        })
+        public ResponseEntity<java.util.List<EquipmentOrder>> bulkUpdateOrderStatus(
+                        @jakarta.validation.Valid @RequestBody BulkStatusUpdateRequest request,
+                        Authentication authentication) {
+
+                log.info("Incoming request for bulk status update: orders={}, newStatus={}", request.getOrderIds(),
+                                request.getStatus());
+                java.util.List<EquipmentOrder> updatedOrders =
+                                supplierOrderService.bulkUpdateOrderStatus(request, authentication);
+                log.info("Successfully performed bulk status update for {} orders", updatedOrders.size());
+                return ResponseEntity.ok(updatedOrders);
+        }
 
         // -----------------------------------------------------------------------
         // Phase 7 – Supplier Performance Scoring

@@ -3,6 +3,7 @@ package com.medtrack.service;
 import com.medtrack.auth.model.AccountStatus;
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.MaintenanceActivityPageResponse;
 import com.medtrack.dto.MaintenanceActivityResponse;
 import com.medtrack.exception.ResourceNotFoundException;
@@ -27,7 +28,6 @@ import java.util.Locale;
 @Service
 @RequiredArgsConstructor
 public class MaintenanceActivityService {
-    public static final int DEFAULT_HISTORY_SIZE = 50;
     public static final int MAX_HISTORY_SIZE = 100;
     private static final String SYSTEM_EMAIL = "system@medtrack.internal";
 
@@ -35,6 +35,7 @@ public class MaintenanceActivityService {
     private final MaintenanceTaskRepository taskRepository;
     private final UserRepository userRepository;
     private final HospitalRepository hospitalRepository;
+    private final PaginationConfig paginationConfig;
 
     public void recordCreated(MaintenanceTask task, User actor, String origin) {
         append(ActivityRecord.builder().task(task).eventType(MaintenanceActivityType.TASK_CREATED)
@@ -101,8 +102,8 @@ public class MaintenanceActivityService {
     public MaintenanceActivityPageResponse getHistory(Long taskId, String typeValue,
                                                        Integer page, Integer size,
                                                        Authentication authentication) {
-        int resolvedPage = page != null ? page : 0;
-        int resolvedSize = size != null ? size : DEFAULT_HISTORY_SIZE;
+        int resolvedPage = page != null ? page : paginationConfig.getDefaultPage();
+        int resolvedSize = size != null ? size : paginationConfig.getDefaultPageSize();
         if (resolvedPage < 0) throw new IllegalArgumentException("History page index cannot be negative");
         if (resolvedSize <= 0 || resolvedSize > MAX_HISTORY_SIZE) {
             throw new IllegalArgumentException("History page size must be between 1 and " + MAX_HISTORY_SIZE);

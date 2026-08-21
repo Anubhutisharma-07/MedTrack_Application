@@ -32,11 +32,17 @@ public class ThreatIntelligenceServiceTest {
     @Mock
     private ThreatMitigationLogRepository mitigationLogRepository;
 
+    @Mock
+    private ThreatIntelAttackPatternLogRepository attackPatternLogRepository;
+
+    @Mock
+    private com.medtrack.auth.siem.service.SiemLogCorrelationService siemLogCorrelationService;
+
     private ThreatIntelligenceService threatIntelService;
 
     @BeforeEach
     void setUp() {
-        threatIntelService = new ThreatIntelligenceService(feedConfigRepository, indicatorRepository, mitigationLogRepository);
+        threatIntelService = new ThreatIntelligenceService(feedConfigRepository, indicatorRepository, mitigationLogRepository, siemLogCorrelationService);
     }
 
     @Test

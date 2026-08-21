@@ -8,7 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
+import com.medtrack.model.MaintenancePolicyStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -41,6 +41,13 @@ public class MaintenanceRuleResponse {
     private LocalDate lastGeneratedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private String policyCode;
+    private MaintenancePolicyStatus status;
+    private LocalDate startDate;
+    private LocalDate nextExecutionDate;
+    private Long assignedTechnicianId;
+    private String assignedTechnician;
+    private LocalDateTime archivedAt;
 
     public static MaintenanceRuleResponse from(MaintenancePolicyRule rule, String equipmentName) {
         return MaintenanceRuleResponse.builder()
@@ -63,6 +70,13 @@ public class MaintenanceRuleResponse {
                 .lastGeneratedAt(rule.getLastGeneratedAt())
                 .createdAt(rule.getCreatedAt())
                 .updatedAt(rule.getUpdatedAt())
+                .policyCode(rule.getPolicyCode())
+                .status(rule.getStatus())
+                .startDate(rule.getStartDate())
+                .nextExecutionDate(rule.getNextExecutionDate())
+                .assignedTechnicianId(rule.getAssignedTechnicianId())
+                .assignedTechnician(rule.getAssignedTechnician())
+                .archivedAt(rule.getArchivedAt())
                 .build();
     }
 }

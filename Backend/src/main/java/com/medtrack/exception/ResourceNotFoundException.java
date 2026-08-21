@@ -1,9 +1,9 @@
 package com.medtrack.exception;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
-
-@ResponseStatus(HttpStatus.NOT_FOUND)
+/**
+ * Thrown when a requested entity does not exist or is not accessible
+ * by the authenticated user.
+ */
 public class ResourceNotFoundException extends RuntimeException {
 
     public ResourceNotFoundException(String message) {

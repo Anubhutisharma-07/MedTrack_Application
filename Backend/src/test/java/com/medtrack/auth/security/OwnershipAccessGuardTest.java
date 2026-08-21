@@ -17,7 +17,10 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
 /**
@@ -72,5 +75,52 @@ public class OwnershipAccessGuardTest {
 
         assertThrows(AccessDeniedException.class,
                 () -> ownershipAccessGuard.assertSelfOrHospitalAdmin(unknown, 50L));
+    }
+
+    @Test
+    void allowSelfByStringSubjectIdentifier() {
+        Authentication self = authenticationFor("technician@medtrack.org", "technician");
+        User user = User.builder().id(50L).email("technician@medtrack.org").role("technician").build();
+        when(userRepository.findByEmail("technician@medtrack.org")).thenReturn(Optional.of(user));
+
+        assertDoesNotThrow(() -> ownershipAccessGuard.assertSelfOrHospitalAdmin(self, "50"));
+    }
+
+    @Test
+    void rejectsForeignStringSubjectIdentifier() {
+        Authentication other = authenticationFor("technician@medtrack.org", "technician");
+        User user = User.builder().id(50L).email("technician@medtrack.org").role("technician").build();
+        when(userRepository.findByEmail("technician@medtrack.org")).thenReturn(Optional.of(user));
+
+        assertThrows(AccessDeniedException.class,
+                () -> ownershipAccessGuard.assertSelfOrHospitalAdmin(other, "user-medtrack-admin"));
+    }
+
+    @Test
+    void rejectsBlankStringSubjectIdentifier() {
+        Authentication self = authenticationFor("technician@medtrack.org", "technician");
+        User user = User.builder().id(50L).email("technician@medtrack.org").role("technician").build();
+        when(userRepository.findByEmail("technician@medtrack.org")).thenReturn(Optional.of(user));
+
+        assertThrows(AccessDeniedException.class,
+                () -> ownershipAccessGuard.assertSelfOrHospitalAdmin(self, " "));
+    }
+
+    @Test
+    void resolvesCallerUserIdFromRepository() {
+        Authentication self = authenticationFor("technician@medtrack.org", "technician");
+        User user = User.builder().id(50L).email("technician@medtrack.org").role("technician").build();
+        when(userRepository.findByEmail("technician@medtrack.org")).thenReturn(Optional.of(user));
+
+        assertEquals(50L, ownershipAccessGuard.getCallerUserId(self));
+    }
+
+    @Test
+    void identifiesHospitalAdminRole() {
+        Authentication admin = authenticationFor("admin@medtrack.org", "hospital");
+        Authentication technician = authenticationFor("technician@medtrack.org", "technician");
+
+        assertTrue(ownershipAccessGuard.isHospitalAdmin(admin));
+        assertFalse(ownershipAccessGuard.isHospitalAdmin(technician));
     }
 }

@@ -6,15 +6,21 @@ import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.Hospital;
 import com.medtrack.repository.HospitalRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 /**
- * Shared component that resolves the currently-authenticated user's hospital
- * from the JWT principal.
+ * Shared utility for resolving the hospital profile from an authenticated user's identity.
  *
- * <p>Many controllers and services repeat the same 3-step lookup (email -> user -> hospital);
- * this guard centralises it so ownership checks cannot drift.</p>
+ * <p>Three service classes (EquipmentService, EquipmentLifecycleService,
+ * EquipmentTimelineService) each contained an identical private
+ * getHospitalForUser(String username) method. Beyond being a DRY violation, those
+ * methods used UserRepository.findByUsername() but the JWT subject is the user's
+ * email (set by JwtUtil.generateToken), so the lookup silently failed for
+ * every real user.</p>
+ *
+ * <p>This component centralises the email-to-user-to-hospital resolution in one place so that
+ * (a) the fix is applied once and cannot drift, and (b) new services get the correct lookup
+ * for free.</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -24,14 +30,13 @@ public class HospitalAccessGuard {
     private final HospitalRepository hospitalRepository;
 
     /**
-     * Resolves the hospital belonging to the authenticated user.
+     * Resolves the hospital profile for the given email address.
      *
-     * @param authentication the Spring Security authentication object
-     * @return the hospital profile
-     * @throws ResourceNotFoundException if the user or hospital cannot be found
+     * @param email the authenticated user's email (from JWT subject)
+     * @return the hospital profile linked to this user
+     * @throws ResourceNotFoundException if the user or hospital profile is not found
      */
-    public Hospital resolveHospital(Authentication authentication) {
-        String email = authentication.getName();
+    public Hospital resolveHospitalFromEmail(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
         return hospitalRepository.findByUserId(user.getId())
@@ -39,14 +44,24 @@ public class HospitalAccessGuard {
     }
 
     /**
-     * Resolves the user entity for the authenticated principal.
+     * Resolves the hospital ID for the given email address.
      *
-     * @param authentication the Spring Security authentication object
-     * @return the user
-     * @throws ResourceNotFoundException if the user cannot be found
+     * @param email the authenticated user's email
+     * @return the hospital database ID
+     * @throws ResourceNotFoundException if the user or hospital profile is not found
      */
-    public User resolveUser(Authentication authentication) {
-        String email = authentication.getName();
+    public Long resolveHospitalIdFromEmail(String email) {
+        return resolveHospitalFromEmail(email).getId();
+    }
+
+    /**
+     * Resolves the user entity for the given email address.
+     *
+     * @param email the authenticated user's email
+     * @return the user entity
+     * @throws ResourceNotFoundException if the user is not found
+     */
+    public User resolveUserFromEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
     }

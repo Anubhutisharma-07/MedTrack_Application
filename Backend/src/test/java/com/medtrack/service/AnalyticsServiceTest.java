@@ -55,8 +55,7 @@ public class AnalyticsServiceTest {
     @Test
     void getHospitalAnalytics_ComputesCorrectStatistics() {
         Long hospitalId = 1L;
-        Hospital hospital = Hospital.builder().id(hospitalId).name("City General Hospital").build();
-        when(hospitalRepository.findById(hospitalId)).thenReturn(Optional.of(hospital));
+        when(hospitalRepository.existsById(hospitalId)).thenReturn(true);
 
         // Mock Equipment
         Equipment eq1 = Equipment.builder()
@@ -158,8 +157,9 @@ public class AnalyticsServiceTest {
         when(equipmentRepository.countByHospitalId(hospitalId)).thenReturn(2L);
         when(equipmentRepository.countByHospitalIdAndStatus(
                 hospitalId, EquipmentStatus.UNDER_MAINTENANCE)).thenReturn(1L);
-        when(equipmentRepository.countByHospitalIdAndWarrantyExpiryBetween(
-                eq(hospitalId), any(LocalDate.class), any(LocalDate.class))).thenReturn(1L);
+        when(equipmentRepository.countAlertableByHospitalIdAndWarrantyExpiryBetween(
+                eq(hospitalId), any(LocalDate.class), any(LocalDate.class),
+                eq(EquipmentStatus.DECOMMISSIONED))).thenReturn(1L);
         when(equipmentRepository.findNameAndCategoryByHospitalId(hospitalId))
                 .thenReturn(Collections.emptyList());
         when(taskRepository.findCompletedTasksWithTimestamps(
@@ -168,10 +168,10 @@ public class AnalyticsServiceTest {
                 hospitalId, MaintenanceStatus.COMPLETED)).thenReturn(4.0);
         when(taskRepository.countByHospitalIdAndStatusNotAndPriority(
                 hospitalId, MaintenanceStatus.COMPLETED, "Critical")).thenReturn(1L);
-        when(orderRepository.sumTotalCostByHospitalAndShippingStatus(
-                "City General Hospital", "Delivered")).thenReturn(BigDecimal.valueOf(180000.00));
-        when(orderRepository.findByHospitalAndShippingStatus(
-                "City General Hospital", "Delivered")).thenReturn(Arrays.asList(order1, order2, order3));
+        when(orderRepository.sumTotalCostByHospitalIdAndShippingStatus(
+                hospitalId, "Delivered")).thenReturn(BigDecimal.valueOf(180000.00));
+        when(orderRepository.findByHospitalIdAndShippingStatus(
+                hospitalId, "Delivered")).thenReturn(Arrays.asList(order1, order2, order3));
 
         HospitalAnalyticsDto dto = analyticsService.getHospitalAnalytics(hospitalId);
 
@@ -209,7 +209,7 @@ public class AnalyticsServiceTest {
 
     @Test
     void getHospitalAnalytics_HospitalNotFound_ThrowsResourceNotFoundException() {
-        when(hospitalRepository.findById(999L)).thenReturn(Optional.empty());
+        when(hospitalRepository.existsById(999L)).thenReturn(false);
 
         assertThrows(ResourceNotFoundException.class,
                 () -> analyticsService.getHospitalAnalytics(999L));

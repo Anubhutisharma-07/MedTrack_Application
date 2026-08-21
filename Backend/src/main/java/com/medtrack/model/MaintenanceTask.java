@@ -166,6 +166,9 @@ public class MaintenanceTask {
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     /**
      * Soft delete fields - records are never hard deleted for audit compliance
      */

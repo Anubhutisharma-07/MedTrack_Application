@@ -52,6 +52,9 @@ public class PasswordResetTest {
     @Mock
     private KafkaEventPublisher kafkaEventPublisher;
 
+    @Mock
+    private com.medtrack.auth.scim.service.ScimUserProvisioningService scimUserProvisioningService;
+
     private final JwtUtil jwtUtil = new JwtUtil();
     private RefreshTokenService refreshTokenService;
     private UserService userService;
@@ -60,6 +63,7 @@ public class PasswordResetTest {
     void setUp() {
         refreshTokenService = new RefreshTokenService(refreshTokenRepository);
         ReflectionTestUtils.setField(refreshTokenService, "refreshExpirationDays", 7L);
+        com.medtrack.auth.scim.service.ScimUserProvisioningService scimService = org.mockito.Mockito.mock(com.medtrack.auth.scim.service.ScimUserProvisioningService.class);
         userService = new UserService(
                 userRepository,
                 passwordEncoder,
@@ -68,7 +72,9 @@ public class PasswordResetTest {
                 authenticationManager,
                 passwordResetTokenRepository,
                 emailService,
-                kafkaEventPublisher
+                kafkaEventPublisher,
+                new PublicRegistrationRolePolicy(),
+                scimService
         );
         ReflectionTestUtils.setField(userService, "otpLength", 6);
         ReflectionTestUtils.setField(userService, "otpExpiryMinutes", 10);

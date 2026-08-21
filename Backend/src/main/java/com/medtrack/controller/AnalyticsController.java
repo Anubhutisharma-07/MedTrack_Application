@@ -2,6 +2,7 @@ package com.medtrack.controller;
 
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.dto.EquipmentFailureRiskDto;
 import com.medtrack.dto.HospitalAnalyticsDto;
 import com.medtrack.model.Hospital;
 import com.medtrack.repository.HospitalRepository;
@@ -26,11 +27,32 @@ public class AnalyticsController {
     @GetMapping("/hospital")
     @PreAuthorize("hasRole('HOSPITAL')")
     public ResponseEntity<HospitalAnalyticsDto> getHospitalAnalytics(Authentication authentication) {
-        User user = userRepository.findByEmail(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = resolveUser(authentication);
         Hospital hospital = hospitalRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found"));
 
         return ResponseEntity.ok(analyticsService.getHospitalAnalytics(hospital.getId()));
+    }
+
+    @GetMapping("/equipment/{id}/failure-risk")
+    @PreAuthorize("hasRole('HOSPITAL')")
+    public ResponseEntity<EquipmentFailureRiskDto> getEquipmentFailureRisk(
+            @PathVariable Long id,
+            Authentication authentication) {
+        User user = resolveUser(authentication);
+        Hospital hospital = hospitalRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hospital profile not found"));
+
+        return ResponseEntity.ok(analyticsService.predictFailureRisk(id, hospital.getId()));
+    }
+
+    private User resolveUser(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new ResourceNotFoundException("User not found");
+        }
+        String identifier = authentication.getName().trim();
+        return userRepository.findByUsername(identifier)
+                .or(() -> userRepository.findByEmail(identifier.toLowerCase(java.util.Locale.ROOT)))
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 }
