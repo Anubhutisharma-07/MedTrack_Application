@@ -176,6 +176,7 @@ const ComplianceEvidencePage = lazy(() => import("../pages/auth/ComplianceEviden
 const ComplianceReportingPage = lazy(() => import("../pages/auth/ComplianceReportingPage"));
 const SocOperationsConsolePage = lazy(() => import("../pages/auth/SocOperationsConsolePage"));
 const EndocrinologyMetabolicHub = lazy(() => import("../pages/endocrinology/EndocrinologyMetabolicHub"));
+const TransplantMedicineHub = lazy(() => import("../pages/transplant/TransplantMedicineHub"));
 
 
 /**
