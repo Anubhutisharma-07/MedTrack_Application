@@ -52,14 +52,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Procurement approvals and receiving reconciliation workflow.
@@ -75,6 +80,11 @@ public class ProcurementService {
     private static final Logger log = LoggerFactory.getLogger(ProcurementService.class);
     private static final BigDecimal SELF_APPROVAL_THRESHOLD = new BigDecimal("50000");
     private static final BigDecimal DEFAULT_BUDGET = new BigDecimal("1000000");
+    /**
+     * The roles an account can actually hold, per {@link User#getRole()}. A policy step naming one
+     * of these is enforceable; anything else is a stage label the application cannot check.
+     */
+    private static final Set<String> ACCOUNT_ROLES = Set.of("hospital", "technician", "supplier");
 
     private final ProcurementRequestRepository requestRepository;
     private final ApprovalPolicyRepository policyRepository;
@@ -150,6 +160,11 @@ public class ProcurementService {
         if (step.getStatus() != ApprovalStepStatus.PENDING) {
             throw new IllegalArgumentException("Approval step has already been decided");
         }
+        // The chain the policy laid down: who each step is routed to, and in what order. Every rule
+        // below is read off it.
+        List<ApprovalStep> chain = approvalStepRepository
+                .findByRequestIdOrderByStepGroupAscIdAsc(step.getRequestId());
+        findBlocker(step, chain, hospital.user()).ifPresent(Blocker::raise);
         // A requester may not approve their own high-value request.
         if (request.getRequesterId().equals(hospital.user().getId())
                 && request.getTotalCost() != null
@@ -367,11 +382,13 @@ public class ProcurementService {
                 .equipmentId(request.getEquipmentCode())
                 .equipmentName(request.getEquipmentName())
                 .quantity(request.getQuantity())
-                .unitCost(quote.getQuoteAmount())
-                .hospital(hospital.hospital().getName())
+                .unitCost(unitCostFrom(quote.getQuoteAmount(), request.getQuantity()))
+                .totalCost(quote.getQuoteAmount())
+                .hospital(orderHospitalLabel(hospital))
                 .createdBy(hospital.user().getEmail())
                 .status("PENDING")
                 .shippingStatus("Processing")
+                .approvalStatus(EquipmentOrder.APPROVAL_APPROVED)
                 .orderDate(LocalDateTime.now())
                 .build());
 
@@ -398,6 +415,9 @@ public class ProcurementService {
         if (proc.getStatus() != ProcurementRequestStatus.ORDERED
                 && proc.getStatus() != ProcurementRequestStatus.PARTIALLY_RECEIVED) {
             throw new IllegalArgumentException("Receiving is only allowed after the request is ordered");
+        }
+        if (request.getQuantityReceived() == null || request.getQuantityReceived() <= 0) {
+            throw new IllegalArgumentException("Received quantity must be greater than zero");
         }
         int receivedSoFar = receivingRepository.findByRequestIdOrderByReceivedAtDesc(requestId).stream()
                 .mapToInt(ReceivingRecord::getQuantityReceived).sum();
@@ -518,12 +538,33 @@ public class ProcurementService {
                 .toList();
     }
 
+    /**
+     * The pending approval steps the caller can actually act on.
+     *
+     * <p>This used to list every pending step in the hospital to every hospital user, which matched
+     * what {@code approveStep} allowed at the time. Now that a step is only decidable by the person
+     * or role it is routed to, once the groups below it are clear, the inbox shows the same set -
+     * otherwise it is a list of buttons that mostly return 403.</p>
+     *
+     * <p>The high-value self-approval threshold is deliberately not applied here: it needs the
+     * request's total cost, and a requester seeing their own step and being told why on click is a
+     * better outcome than an extra query per row.</p>
+     */
     public List<ApprovalStepResponse> getApprovalInbox(Authentication authentication) {
         HospitalAccess hospital = getHospitalForUser(authentication);
-        return approvalStepRepository.findByHospitalIdAndStatusOrderByCreatedAtAsc(
-                        hospital.hospitalId(), ApprovalStepStatus.PENDING).stream()
-                .map(ApprovalStepResponse::from)
-                .toList();
+        List<ApprovalStep> pending = approvalStepRepository.findByHospitalIdAndStatusOrderByCreatedAtAsc(
+                hospital.hospitalId(), ApprovalStepStatus.PENDING);
+
+        Map<Long, List<ApprovalStep>> chainsByRequest = new HashMap<>();
+        List<ApprovalStepResponse> actionable = new ArrayList<>();
+        for (ApprovalStep step : pending) {
+            List<ApprovalStep> chain = chainsByRequest.computeIfAbsent(step.getRequestId(),
+                    requestId -> approvalStepRepository.findByRequestIdOrderByStepGroupAscIdAsc(requestId));
+            if (findBlocker(step, chain, hospital.user()).isEmpty()) {
+                actionable.add(ApprovalStepResponse.from(step));
+            }
+        }
+        return List.copyOf(actionable);
     }
 
     public List<ApprovalPolicyResponse> listPolicies(Authentication authentication) {
@@ -621,6 +662,99 @@ public class ProcurementService {
         }
     }
 
+    /**
+     * Why this caller cannot decide this step right now, if there is a reason.
+     *
+     * <p>Returned rather than thrown so that {@link #getApprovalInbox} and {@link #approveStep} can
+     * share one definition of "decidable" - the inbox keeps the steps with no blocker, the decision
+     * endpoint raises the blocker it finds. The rules, in the order a person would apply them:</p>
+     *
+     * <ol>
+     *   <li><b>Sequence.</b> A step in group <i>n</i> waits for every step in a lower group. Steps
+     *       sharing a group stay parallel, which is what the group is for.</li>
+     *   <li><b>Named approver.</b> A step carrying an {@code approverEmail} is routed to that
+     *       person and nobody else.</li>
+     *   <li><b>Role.</b> A step carrying no email but naming an account role requires the caller to
+     *       hold it. Roles outside the account model - "finance", "director" and the like - are
+     *       stage labels rather than authorities the application can check, so they are not
+     *       enforced here; a policy that needs those enforced should name the approver.</li>
+     *   <li><b>Four eyes.</b> Whoever decided one group on a request cannot decide another. A
+     *       multi-stage policy exists to collect more than one signature.</li>
+     * </ol>
+     */
+    private Optional<Blocker> findBlocker(ApprovalStep step, List<ApprovalStep> chain, User caller) {
+        int group = groupOf(step);
+
+        String openLowerGroups = chain.stream()
+                .filter(other -> groupOf(other) < group)
+                .filter(other -> other.getStatus() != ApprovalStepStatus.APPROVED)
+                .map(other -> String.valueOf(groupOf(other)))
+                .distinct()
+                .collect(Collectors.joining(", "));
+        if (!openLowerGroups.isBlank()) {
+            return Optional.of(Blocker.invalid("Approval group " + group
+                    + " cannot be decided while group " + openLowerGroups + " is still open"));
+        }
+
+        String routedTo = trimToNull(step.getApproverEmail());
+        String callerEmail = trimToNull(caller.getEmail());
+        if (routedTo != null) {
+            if (callerEmail == null || !routedTo.equalsIgnoreCase(callerEmail)) {
+                return Optional.of(Blocker.denied("This approval step is routed to " + routedTo));
+            }
+        } else {
+            String requiredRole = trimToNull(step.getApproverRole());
+            if (requiredRole != null && ACCOUNT_ROLES.contains(requiredRole.toLowerCase(Locale.ROOT))
+                    && !requiredRole.equalsIgnoreCase(caller.getRole())) {
+                return Optional.of(Blocker.denied("This approval step requires the "
+                        + requiredRole.toLowerCase(Locale.ROOT) + " role"));
+            }
+        }
+
+        if (callerEmail != null) {
+            Optional<ApprovalStep> alreadyDecided = chain.stream()
+                    .filter(other -> groupOf(other) != group)
+                    .filter(other -> callerEmail.equalsIgnoreCase(trimToNull(other.getDecidedBy())))
+                    .findFirst();
+            if (alreadyDecided.isPresent()) {
+                return Optional.of(Blocker.denied("You already decided approval group "
+                        + groupOf(alreadyDecided.get()) + " on this request; group " + group
+                        + " needs a different approver"));
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private int groupOf(ApprovalStep step) {
+        return step.getStepGroup() == null ? 0 : step.getStepGroup();
+    }
+
+    /**
+     * A reason one caller cannot decide one step, and the exception that reason deserves.
+     *
+     * <p>An out-of-order step is a state problem (400); a step belonging to somebody else is an
+     * authorisation problem (403). Both carry a message naming what the approver has to chase,
+     * because "access denied" on its own tells them nothing actionable.</p>
+     */
+    private record Blocker(boolean accessDenied, String message) {
+
+        static Blocker denied(String message) {
+            return new Blocker(true, message);
+        }
+
+        static Blocker invalid(String message) {
+            return new Blocker(false, message);
+        }
+
+        void raise() {
+            if (accessDenied) {
+                throw new AccessDeniedException(message);
+            }
+            throw new IllegalArgumentException(message);
+        }
+    }
+
     private boolean allStepsApproved(Long requestId) {
         List<ApprovalStep> steps = approvalStepRepository.findByRequestIdOrderByStepGroupAscIdAsc(requestId);
         return !steps.isEmpty() && steps.stream().allMatch(step -> step.getStatus() == ApprovalStepStatus.APPROVED);
@@ -685,6 +819,49 @@ public class ProcurementService {
                 .reserved(reserved)
                 .available(total.subtract(reserved))
                 .build();
+    }
+
+    /**
+     * The label an order is stamped with so the hospital that raised the request can see it.
+     *
+     * <p>{@code EquipmentOrder.hospital} is free text and {@code OrderService} filters it by the
+     * caller's {@code User.organization}. This flow used to write {@code Hospital.name} instead, a
+     * different field with nothing tying the two together, so an order created by accepting a quote
+     * was missing from the order list, the order detail endpoint and the archive of the hospital
+     * that had just approved and paid for it.</p>
+     *
+     * <p>The profile name remains the fallback for a user with no organisation on record - the
+     * column is {@code nullable = false} and an order has to carry something.</p>
+     */
+    private String orderHospitalLabel(HospitalAccess hospital) {
+        String organization = trimToNull(hospital.user().getOrganization());
+        if (organization != null) {
+            return organization;
+        }
+        String profileName = trimToNull(hospital.hospital().getName());
+        if (profileName != null) {
+            return profileName;
+        }
+        throw new IllegalArgumentException(
+                "Cannot raise an order: the hospital account has neither an organisation nor a profile name");
+    }
+
+    /**
+     * Splits an accepted quote back into a per-unit cost.
+     *
+     * <p>{@code SupplierQuote.quoteAmount} is what the supplier quoted for the whole request. It was
+     * written straight into {@code EquipmentOrder.unitCost} while {@code totalCost} - the column
+     * spend analytics sums - was left null, so the order card showed the entire quote as the price
+     * of one unit and the purchase contributed nothing to the hospital's spend.</p>
+     */
+    private BigDecimal unitCostFrom(BigDecimal quoteAmount, Integer quantity) {
+        if (quoteAmount == null) {
+            return null;
+        }
+        if (quantity == null || quantity <= 0) {
+            return quoteAmount;
+        }
+        return quoteAmount.divide(BigDecimal.valueOf(quantity), 2, RoundingMode.HALF_UP);
     }
 
     private void validateRequest(ProcurementRequestRequest request) {

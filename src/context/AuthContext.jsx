@@ -4,6 +4,7 @@ import { readJson, writeJson, remove } from "../utils/safeSessionStorage";
 
 const USER_KEY = "medtrack_user";
 const AUTHORITY_KEY = "medtrack_authority";
+const SESSION_END_REASON_KEY = "medtrack_session_end_reason";
 const DEFAULT_AUTHORITY = { authorityVersion: 1, permissions: [] };
 
 /** How often the client re-checks its authority version against the server. */
@@ -24,11 +25,18 @@ export const AuthProvider = ({ children }) => {
 
   const [authorityLoading, setAuthorityLoading] = useState(false);
 
-  /** Set when the session was ended by an administrator rather than by the user. */
-  const [revokedReason, setRevokedReason] = useState(null);
+  /**
+   * Set when the session ended for a reason the user should see again: ended
+   * by an administrator (authority revocation) or auto-locked for inactivity.
+   * Persisted so the reason survives a page refresh on the login screen.
+   */
+  const [revokedReason, setRevokedReason] = useState(() =>
+    readJson(SESSION_END_REASON_KEY, null)
+  );
 
   const login = (userData) => {
     setRevokedReason(null);
+    remove(SESSION_END_REASON_KEY);
     setUser(userData);
     writeJson(USER_KEY, userData);
     if (userData && userData.id) {
@@ -42,12 +50,29 @@ export const AuthProvider = ({ children }) => {
     setRevokedReason(reason);
     remove(USER_KEY);
     remove(AUTHORITY_KEY);
+    if (reason) {
+      writeJson(SESSION_END_REASON_KEY, reason);
+    } else {
+      remove(SESSION_END_REASON_KEY);
+    }
+  }, []);
+
+  /** Dismisses the session-end notice once the user has read it. */
+  const clearRevokedReason = useCallback(() => {
+    setRevokedReason(null);
+    remove(SESSION_END_REASON_KEY);
   }, []);
 
   // Held in a ref so fetchUserAuthority can call logout without taking it as a dependency, which
   // would put the callback's identity back on a state value and restart the poll interval.
   const logoutRef = useRef(logout);
   logoutRef.current = logout;
+
+  // Latest committed authority state, also held in a ref. fetchUserAuthority is a stable callback
+  // (empty deps), so it cannot read authorityState directly without going stale between renders -
+  // but the revocation comparison needs the current version at fetch time.
+  const authorityStateRef = useRef(authorityState);
+  authorityStateRef.current = authorityState;
 
   // No dependency on authorityState. It previously depended on authorityState.authorityVersion while
   // also *setting* authorityState, so the callback identity changed on every poll, the effect below
@@ -67,31 +92,24 @@ export const AuthProvider = ({ children }) => {
           active: data.active
         };
 
-        let revoked = false;
-
-        // Compared inside the updater so it reads the committed value rather than a stale capture.
-        setAuthorityState((previous) => {
-          if (
-            previous.authorityVersion &&
-            newAuth.authorityVersion > previous.authorityVersion
-          ) {
-            revoked = true;
-          }
-          return newAuth;
-        });
-
-        if (revoked) {
-          // Authority version exists so an administrator can revoke live sessions - that is what
-          // POST /api/auth/authority/version/increment and /bump-global are for, and what the
-          // Enterprise Security Center presents as "Active tokens invalidated!". Previously this
-          // branch only logged a warning, so the console's headline control had no visible effect
-          // and the UI kept rendering with the old permissions until the JWT expired on its own.
+        // Authority version exists so an administrator can revoke live sessions - that is what
+        // POST /api/auth/authority/version/increment and /bump-global are for, and what the
+        // Enterprise Security Center presents as "Active tokens invalidated!". Compare against the
+        // committed value read at fetch time. The previous version must NOT be compared inside a
+        // setState updater: React defers updater functions to the render phase, so a flag written
+        // there is still false when checked synchronously and the logout below never runs.
+        const previousAuth = authorityStateRef.current;
+        if (
+          previousAuth.authorityVersion &&
+          newAuth.authorityVersion > previousAuth.authorityVersion
+        ) {
           logoutRef.current(
             "Your session was ended by an administrator. Please sign in again."
           );
           return;
         }
 
+        setAuthorityState(newAuth);
         writeJson(AUTHORITY_KEY, newAuth);
       }
     } catch (err) {
@@ -135,6 +153,7 @@ export const AuthProvider = ({ children }) => {
         permissions: authorityState.permissions,
         authorityLoading,
         revokedReason,
+        clearRevokedReason,
         login,
         logout,
         hasPermission,

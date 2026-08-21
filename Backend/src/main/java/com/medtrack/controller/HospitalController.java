@@ -14,6 +14,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
+import java.util.List;
+
 /**
  * REST controller for managing hospital profiles.
  * Provides endpoints for creating and managing
@@ -21,7 +24,6 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/hospital")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"}, maxAge = 3600)
 @RequiredArgsConstructor
 public class HospitalController {
 
@@ -44,5 +46,31 @@ public class HospitalController {
 
         Hospital createdHospital = hospitalService.createHospitalProfile(hospital, userEmail);
         return new ResponseEntity<>(createdHospital, HttpStatus.CREATED);
+    }
+
+    /**
+     * Archives a hospital profile (soft delete).
+     *
+     * @param id the ID of the hospital to archive
+     * @param principal the authenticated user making the request
+     * @return the archived hospital
+     */
+    @PostMapping("/{id}/archive")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('HOSPITAL')")
+    public ResponseEntity<Hospital> archiveHospital(@PathVariable Long id, Principal principal) {
+        Hospital archived = hospitalService.archiveHospital(id, principal.getName());
+        return ResponseEntity.ok(archived);
+    }
+
+    /**
+     * Retrieves all archived hospital profiles.
+     * Accessible only to ADMIN users.
+     *
+     * @return list of archived hospitals
+     */
+    @GetMapping("/archived")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<Hospital>> getArchivedHospitals() {
+        return ResponseEntity.ok(hospitalService.getArchivedHospitals());
     }
 }

@@ -9,8 +9,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.time.LocalDateTime;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
+@SQLRestriction("deleted = false")
 @Table(name = "hospital")
 @Data
 @Builder
@@ -45,4 +48,17 @@ public class Hospital {
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinColumn(name = "hospital_id")
     private List<Equipment> equipmentList;
+
+    /**
+     * Soft delete fields - records are never hard deleted for audit compliance
+     */
+    @Column(name = "deleted", nullable = false)
+    @Builder.Default
+    private Boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by", length = 255)
+    private String deletedBy;
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Parses every JavaScript/JSX source under `src/` and fails the build if any file is not
- * syntactically valid.
+ * syntactically valid, or references an identifier it never defines.
  *
  * Why this exists
  * ---------------
@@ -21,6 +21,35 @@
  * that was never closed.
  *
  * Wired into `prebuild`, so `npm run build` cannot succeed with an unparseable source file.
+ *
+ * The second check: identifiers that are never defined
+ * ----------------------------------------------------
+ * Parsing is necessary but not sufficient. Thirteen hub consoles later shipped to `main` rendering
+ * nothing but the ErrorBoundary fallback, and every one of those files parsed perfectly. The
+ * extraction of the page-local UI primitives into src/components/common deleted each page's own
+ * `StatCard`, `SearchBox`, `InfoRow`, `Modal`, `Badge`, `TabsBar` and `SEVERITY_META`, and never
+ * added the imports that replace them. A free variable is valid JavaScript right up to the moment it
+ * is evaluated:
+ *
+ *   ReferenceError: SEVERITY_META is not defined
+ *     at ColdChainCommandHub (src/pages/coldchain/ColdChainCommandHub.jsx:977:49)
+ *
+ * `react-scripts build` with `CI=true` does report this, as `no-undef` and `react/jsx-no-undef`. Two
+ * reasons that was not enough.
+ *
+ *   - It is the last gate. `prebuild` runs check-syntax, then check-routes, and only then does
+ *     webpack start; each stage short-circuits the next. On the commit that broke the build all
+ *     three defects were present and only the parse errors were reported. Finding the other two took
+ *     three separate build cycles.
+ *
+ *   - It only sees files the bundle reaches. A page that nothing imports is never compiled, so
+ *     ESLint never looks at it. That is exactly the state src/pages/CookiePage.jsx was in: three
+ *     undefined identifiers in a rendered section, invisible to every gate in the repository.
+ *
+ * The analysis lives in scripts/lib/undefinedIdentifiers.js and runs off the syntax tree this script
+ * already built, so it costs about a millisecond per file. It is deliberately not a scope analyser -
+ * bindings are collected per file and flattened - because the defect class is "defined nowhere in
+ * this file" and a guard that false-positives gets switched off. See that module's header.
  *
  * Usage:
  *   node scripts/check-syntax.js            # check src/
@@ -42,6 +71,9 @@ try {
   );
   process.exit(2);
 }
+
+// eslint-disable-next-line global-require
+const { findUndefinedIdentifiers } = require('./lib/undefinedIdentifiers');
 
 const EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs']);
 const IGNORED_DIRECTORIES = new Set(['node_modules', 'build', 'dist', 'coverage', '.git']);
@@ -121,6 +153,41 @@ function renderExcerpt(source, line, column) {
   return rendered.join('\n');
 }
 
+/**
+ * Reports files that parse but reference names they never define.
+ *
+ * The format mirrors the parse-failure report above - file, then one indented line per problem, then
+ * a sentence saying what the consequence is - because whoever reads one reads the other, and the two
+ * arrive from the same command.
+ */
+function reportUndefinedIdentifiers(undefinedFiles, scanned) {
+  const total = undefinedFiles.reduce((sum, entry) => sum + entry.identifiers.length, 0);
+
+  console.error(
+    `\ncheck-syntax: ${total} undefined identifier(s) in ${undefinedFiles.length} of `
+      + `${scanned} file(s).\n`
+  );
+
+  for (const { file, identifiers, source } of undefinedFiles) {
+    console.error(`  ${file}`);
+    for (const { name, line, column, count } of identifiers) {
+      const repeats = count > 1 ? ` (${count} references)` : '';
+      console.error(`    ${line}:${column}  '${name}' is not defined${repeats}`);
+    }
+    // The first occurrence in context. One excerpt per file rather than per identifier: when a whole
+    // import block is missing there are a dozen names and they all point at the same cause.
+    const first = identifiers[0];
+    console.error(renderExcerpt(source, first.line, first.column));
+    console.error('');
+  }
+
+  console.error(
+    'An identifier that is never defined is a ReferenceError the moment the line runs. In a\n'
+      + 'component that means the first render throws and the page shows the ErrorBoundary\n'
+      + 'fallback rather than the console. The usual cause is a missing import.\n'
+  );
+}
+
 function main() {
   const projectRoot = path.resolve(__dirname, '..');
   const targets = process.argv.slice(2);
@@ -140,11 +207,13 @@ function main() {
   }
 
   const failures = [];
+  const undefinedFiles = [];
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
+    let ast;
     try {
-      parser.parse(source, { ...PARSER_OPTIONS, sourceFilename: file });
+      ast = parser.parse(source, { ...PARSER_OPTIONS, sourceFilename: file });
     } catch (error) {
       failures.push({
         file: path.relative(projectRoot, file),
@@ -152,12 +221,30 @@ function main() {
         loc: error.loc,
         source,
       });
+      // No tree, so there is nothing to check for undefined identifiers. The parse error is the
+      // report; a second complaint about the same file would only bury it.
+      continue;
+    }
+
+    const identifiers = findUndefinedIdentifiers(ast);
+    if (identifiers.length > 0) {
+      undefinedFiles.push({ file: path.relative(projectRoot, file), identifiers, source });
     }
   }
 
-  if (failures.length === 0) {
-    console.log(`check-syntax: ${files.length} file(s) parsed cleanly.`);
+  if (failures.length === 0 && undefinedFiles.length === 0) {
+    console.log(
+      `check-syntax: ${files.length} file(s) parsed cleanly, no undefined identifiers.`
+    );
     return;
+  }
+
+  // Parse failures first and on their own: an unparseable file is a superset of the problem, and
+  // mixing the two reports makes neither readable. Undefined identifiers are reported in the same
+  // run only when every file parsed.
+  if (failures.length === 0) {
+    reportUndefinedIdentifiers(undefinedFiles, files.length);
+    process.exit(1);
   }
 
   console.error(

@@ -11,11 +11,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -100,15 +98,15 @@ class RequestMappingUniquenessTest {
     // ---------------------------------------------------------------------
 
     /**
-     * Expands one source file into the set of {@code METHOD /path} routes it declares.
+     * Expands one source file into the ordered list of {@code METHOD /path} routes it declares.
      *
      * <p>A single annotation may declare several paths ({@code @GetMapping({"/a", "/b"})}) and
      * several methods ({@code @RequestMapping(method = {GET, POST})}); only the common single-value
      * forms actually used in this codebase are parsed, and anything unrecognised is skipped rather
      * than guessed at, so this test never reports a collision that is not real.</p>
      */
-    private static Set<String> routesIn(String source, String basePath) {
-        Set<String> routes = new LinkedHashSet<>();
+    private static List<String> routesIn(String source, String basePath) {
+        List<String> routes = new ArrayList<>();
         Matcher matcher = METHOD_MAPPING.matcher(source);
 
         while (matcher.find()) {

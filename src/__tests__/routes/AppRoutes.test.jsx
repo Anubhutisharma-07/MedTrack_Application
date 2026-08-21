@@ -14,6 +14,25 @@ vi.mock("../../services/AuthService", () => ({
   getAuthorityAuditLogs: vi.fn(),
 }));
 
+vi.mock("../../services/EquipmentService", () => ({
+  getAllEquipment: vi.fn().mockResolvedValue([]),
+  getEquipmentById: vi.fn(),
+  addEquipment: vi.fn(),
+  deleteEquipment: vi.fn(),
+}));
+
+vi.mock("../../services/MaintenanceService", () => ({
+  getAllTasks: vi.fn().mockResolvedValue([]),
+  getTaskById: vi.fn(),
+  scheduleTask: vi.fn(),
+}));
+
+// Page chunks are lazy-loaded behind <Suspense>, so the first render is the PageLoader spinner
+// and the real page only appears once the dynamic import resolves. Under a fully loaded suite
+// (or a slow/OneDrive-synced machine) that import can exceed Testing Library's default 1000ms
+// findBy timeout, which made these tests flaky. Wait generously for the real page instead.
+const LAZY_PAGE_TIMEOUT = 5000;
+
 beforeEach(() => {
   sessionStorage.clear();
 });
@@ -29,7 +48,7 @@ it("redirects to LoginPage when no user", async () => {
     <AppRouter currentPage="dashboard" onNavigate={() => {}} />,
     { authValue: { user: null } }
   );
-  expect(await screen.findByText("Welcome back!")).toBeInTheDocument();
+  expect(await screen.findByText("Welcome back!", {}, { timeout: LAZY_PAGE_TIMEOUT })).toBeInTheDocument();
 });
 
 it("renders Dashboard component when hospital user is authenticated", async () => {
@@ -37,7 +56,7 @@ it("renders Dashboard component when hospital user is authenticated", async () =
     <AppRouter currentPage="dashboard" onNavigate={() => {}} />,
     { authValue: { user: { id: "u1", role: "hospital", name: "Hospital Admin" } } }
   );
-  expect(await screen.findAllByText(/MedTrack/i)).not.toHaveLength(0);
+  expect(await screen.findAllByText(/MedTrack/i, {}, { timeout: LAZY_PAGE_TIMEOUT })).not.toHaveLength(0);
 });
 
 it("renders landing page without authentication", async () => {
@@ -45,7 +64,7 @@ it("renders landing page without authentication", async () => {
     <AppRouter currentPage="landing" onNavigate={() => {}} />,
     { authValue: { user: null } }
   );
-  expect(await screen.findAllByText(/MedTrack/i)).not.toHaveLength(0);
+  expect(await screen.findAllByText(/MedTrack/i, {}, { timeout: LAZY_PAGE_TIMEOUT })).not.toHaveLength(0);
 });
 
 it("shows UnauthorizedPage when technician tries to access hospital route", () => {
@@ -61,7 +80,7 @@ it("shows 404 page for unknown routes", async () => {
     <AppRouter currentPage="non-existent-route" onNavigate={() => {}} />,
     { authValue: { user: null } }
   );
-  expect(await screen.findByText("404")).toBeInTheDocument();
+  expect(await screen.findByText("404", {}, { timeout: LAZY_PAGE_TIMEOUT })).toBeInTheDocument();
 });
 
 it("shows NotFoundPage as default fallback", async () => {
@@ -69,5 +88,5 @@ it("shows NotFoundPage as default fallback", async () => {
     <AppRouter currentPage="some-unknown-page" onNavigate={() => {}} />,
     { authValue: { user: { id: "u1", role: "hospital" } } }
   );
-  expect(await screen.findByText("404")).toBeInTheDocument();
+  expect(await screen.findByText("404", {}, { timeout: LAZY_PAGE_TIMEOUT })).toBeInTheDocument();
 });

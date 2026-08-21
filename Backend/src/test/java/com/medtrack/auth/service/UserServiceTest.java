@@ -15,6 +15,7 @@ import com.medtrack.auth.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -59,6 +60,9 @@ public class UserServiceTest {
     @Mock
     private KafkaEventPublisher kafkaEventPublisher;
 
+    @Mock
+    private com.medtrack.auth.scim.service.ScimUserProvisioningService scimUserProvisioningService;
+
     private final JwtUtil jwtUtil = new JwtUtil();
 
     private RefreshTokenService refreshTokenService;
@@ -70,13 +74,25 @@ public class UserServiceTest {
         ReflectionTestUtils.setField(jwtUtil, "expirationMs", 604800000L);
         refreshTokenService = new RefreshTokenService(refreshTokenRepository);
         ReflectionTestUtils.setField(refreshTokenService, "refreshExpirationDays", 7L);
-        userService = new UserService(userRepository, passwordEncoder, jwtUtil, refreshTokenService, authenticationManager, passwordResetTokenRepository, emailService, kafkaEventPublisher);
+        com.medtrack.auth.scim.service.ScimUserProvisioningService scimService = org.mockito.Mockito.mock(com.medtrack.auth.scim.service.ScimUserProvisioningService.class);
+        userService = new UserService(
+                userRepository,
+                passwordEncoder,
+                jwtUtil,
+                refreshTokenService,
+                authenticationManager,
+                passwordResetTokenRepository,
+                emailService,
+                kafkaEventPublisher,
+                new PublicRegistrationRolePolicy(),
+                scimService
+        );
         ReflectionTestUtils.setField(userService, "lockDurationMinutes", 30);
         ReflectionTestUtils.setField(userService, "jwtExpirationMs", 900000L);
     }
 
     @Test
-    void register_Success() {
+    void register_SupplierRole_Succeeds() {
         RegisterRequest request = RegisterRequest.builder()
                 .name("Test User")
                 .organization("St. Mary Clinic")
@@ -84,7 +100,7 @@ public class UserServiceTest {
                 .phone("+1 (555) 019-2834")
                 .password("password123")
                 .confirmPassword("password123")
-                .role("HOSPITAL")
+                .role("SUPPLIER")
                 .build();
 
         User savedUser = User.builder()
@@ -95,7 +111,7 @@ public class UserServiceTest {
                 .phone("+1 (555) 019-2834")
                 .username("test")
                 .password("hashed_password")
-                .role("HOSPITAL")
+                .role("SUPPLIER")
                 .accountStatus(AccountStatus.ACTIVE)
                 .build();
 
@@ -121,7 +137,7 @@ public class UserServiceTest {
         assertEquals("test@example.com", response.getUser().getEmail());
         assertEquals("+1 (555) 019-2834", response.getUser().getPhone());
         assertEquals("St. Mary Clinic", response.getUser().getOrganization());
-        assertEquals("HOSPITAL", response.getUser().getRole());
+        assertEquals("SUPPLIER", response.getUser().getRole());
         assertNotNull(response.getToken());
         assertFalse(response.getToken().isEmpty());
         assertNotNull(response.getRefreshToken());
@@ -135,7 +151,7 @@ public class UserServiceTest {
     }
 
     @Test
-    void register_Success_DefaultRole() {
+    void register_MissingRole_DefaultsToTechnician() {
         RegisterRequest request = RegisterRequest.builder()
                 .name("Test User")
                 .organization("St. Mary Clinic")
@@ -143,7 +159,7 @@ public class UserServiceTest {
                 .phone("+1 (555) 019-2834")
                 .password("password123")
                 .confirmPassword("password123")
-                .role(null) // Should default to HOSPITAL
+                .role(null)
                 .build();
 
         User savedUser = User.builder()
@@ -154,7 +170,7 @@ public class UserServiceTest {
                 .phone("+1 (555) 019-2834")
                 .username("test")
                 .password("hashed_password")
-                .role("HOSPITAL")
+                .role("TECHNICIAN")
                 .accountStatus(AccountStatus.ACTIVE)
                 .build();
 
@@ -172,7 +188,46 @@ public class UserServiceTest {
         AuthResponse response = userService.register(request);
 
         assertNotNull(response);
-        assertEquals("HOSPITAL", response.getUser().getRole());
+        assertEquals("TECHNICIAN", response.getUser().getRole());
+    }
+
+    @Test
+    void register_PermittedRole_IsTrimmedAndNormalized() {
+        RegisterRequest request = RegisterRequest.builder()
+                .name("Test User")
+                .organization("St. Mary Clinic")
+                .email("test@example.com")
+                .phone("+1 (555) 019-2834")
+                .password("password123")
+                .confirmPassword("password123")
+                .role("  supplier  ")
+                .build();
+
+        User savedUser = User.builder()
+                .id(1L)
+                .name("Test User")
+                .organization("St. Mary Clinic")
+                .email("test@example.com")
+                .phone("+1 (555) 019-2834")
+                .username("test")
+                .password("hashed_password")
+                .role("SUPPLIER")
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+
+        when(userRepository.existsByEmail(request.getEmail())).thenReturn(false);
+        when(userRepository.existsByUsername("test")).thenReturn(false);
+        when(passwordEncoder.encode(request.getPassword())).thenReturn("hashed_password");
+        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+        when(refreshTokenRepository.save(any(RefreshToken.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AuthResponse response = userService.register(request);
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertEquals("SUPPLIER", userCaptor.getValue().getRole());
+        assertEquals("SUPPLIER", response.getRole());
     }
 
     @Test
@@ -184,7 +239,7 @@ public class UserServiceTest {
                 .phone("+1 (555) 019-2834")
                 .password("password123")
                 .confirmPassword("password123")
-                .role("HOSPITAL")
+                .role("SUPPLIER")
                 .build();
 
         when(userRepository.existsByEmail(request.getEmail())).thenReturn(true);
@@ -203,7 +258,7 @@ public class UserServiceTest {
                 .phone("+1 (555) 019-2834")
                 .password("password123")
                 .confirmPassword("password123")
-                .role("HOSPITAL")
+                .role("TECHNICIAN")
                 .build();
 
         User savedUser = User.builder()
@@ -214,7 +269,7 @@ public class UserServiceTest {
                 .phone("+1 (555) 019-2834")
                 .username("test1") // Unique username auto-generated
                 .password("hashed_password")
-                .role("HOSPITAL")
+                .role("TECHNICIAN")
                 .accountStatus(AccountStatus.ACTIVE)
                 .build();
 
@@ -249,12 +304,55 @@ public class UserServiceTest {
                 .role("INVALID_ROLE")
                 .build();
 
-        when(userRepository.existsByEmail(request.getEmail())).thenReturn(false);
-
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> userService.register(request));
-        assertTrue(exception.getMessage().contains("Invalid role"));
+        assertEquals("Invalid registration role. Must be TECHNICIAN or SUPPLIER", exception.getMessage());
 
-        verify(userRepository, never()).save(any(User.class));
+        verifyNoInteractions(userRepository, passwordEncoder, refreshTokenRepository, kafkaEventPublisher);
+    }
+
+    @Test
+    void register_HospitalRole_IsRejectedBeforeAnySideEffects() {
+        RegisterRequest request = RegisterRequest.builder()
+                .name("Attacker")
+                .organization("Untrusted Organization")
+                .email("attacker@example.com")
+                .phone("+1 (555) 019-9999")
+                .password("password123")
+                .confirmPassword("password123")
+                .role("HOSPITAL")
+                .build();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.register(request)
+        );
+
+        assertEquals(
+                "HOSPITAL accounts cannot be created through public registration",
+                exception.getMessage()
+        );
+        verifyNoInteractions(userRepository, passwordEncoder, refreshTokenRepository, kafkaEventPublisher);
+    }
+
+    @Test
+    void register_MixedCaseHospitalRole_CannotBypassPolicy() {
+        RegisterRequest request = RegisterRequest.builder()
+                .name("Attacker")
+                .organization("Untrusted Organization")
+                .email("attacker@example.com")
+                .phone("+1 (555) 019-9999")
+                .password("password123")
+                .confirmPassword("password123")
+                .role("  hOsPiTaL  ")
+                .build();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.register(request)
+        );
+
+        assertTrue(exception.getMessage().contains("cannot be created"));
+        verifyNoInteractions(userRepository, passwordEncoder, refreshTokenRepository, kafkaEventPublisher);
     }
 
     @Test

@@ -21,6 +21,97 @@ public interface EquipmentOrderRepository extends JpaRepository<EquipmentOrder, 
 
     Page<EquipmentOrder> findByHospital(String hospital, Pageable pageable);
 
+    // ------------------------------------------------------------------
+    // Hospital-visible orders
+    //
+    // EquipmentOrder.hospital is a free-text label and two writers disagree about what belongs in
+    // it: OrderService.placeOrder writes User.organization, ProcurementService.acceptQuote writes
+    // Hospital.name. Nothing constrains those two strings to match, so matching on either one alone
+    // hides half of a hospital's orders. These queries accept both identities, which also keeps the
+    // rows already written the other way reachable instead of stranding them.
+    // ------------------------------------------------------------------
+
+    String HOSPITAL_IDENTITY_MATCH =
+            "(LOWER(TRIM(o.hospital)) = LOWER(TRIM(:organization)) "
+                    + "OR LOWER(TRIM(o.hospital)) = "
+                    + "(SELECT LOWER(TRIM(h.name)) FROM Hospital h WHERE LOWER(h.user.email) = LOWER(:email)))";
+
+    @Query("SELECT o FROM EquipmentOrder o WHERE " + HOSPITAL_IDENTITY_MATCH)
+    Page<EquipmentOrder> findVisibleToHospitalUser(
+            @Param("organization") String organization,
+            @Param("email") String email,
+            Pageable pageable);
+
+    @Query("SELECT o FROM EquipmentOrder o WHERE " + HOSPITAL_IDENTITY_MATCH + " AND (:status IS NULL OR UPPER(o.status) = UPPER(:status))")
+    Page<EquipmentOrder> findVisibleToHospitalUserWithStatus(
+            @Param("organization") String organization,
+            @Param("email") String email,
+            @Param("status") String status,
+            Pageable pageable);
+
+    @Query("SELECT o FROM EquipmentOrder o WHERE " + HOSPITAL_IDENTITY_MATCH)
+    List<EquipmentOrder> findVisibleToHospitalUser(
+            @Param("organization") String organization,
+            @Param("email") String email);
+
+    @Query("SELECT o FROM EquipmentOrder o WHERE o.id = :id AND " + HOSPITAL_IDENTITY_MATCH)
+    Optional<EquipmentOrder> findVisibleToHospitalUserById(
+            @Param("id") Long id,
+            @Param("organization") String organization,
+            @Param("email") String email);
+
+    /**
+     * The same pair of identities, resolved from a hospital id instead of from the caller.
+     *
+     * <p>Analytics has the {@code Hospital} rather than the authenticated user, so it matches on the
+     * profile name and on the owning user's organisation. Two scalar subqueries rather than an
+     * {@code IN} list because JPQL has no {@code UNION}.</p>
+     */
+    String HOSPITAL_ID_IDENTITY_MATCH =
+            "(LOWER(TRIM(o.hospital)) = (SELECT LOWER(TRIM(h.name)) FROM Hospital h WHERE h.id = :hospitalId) "
+                    + "OR LOWER(TRIM(o.hospital)) = "
+                    + "(SELECT LOWER(TRIM(h.user.organization)) FROM Hospital h WHERE h.id = :hospitalId))";
+
+    @Query("SELECT SUM(o.totalCost) FROM EquipmentOrder o "
+            + "WHERE LOWER(o.shippingStatus) = LOWER(:shippingStatus) AND " + HOSPITAL_ID_IDENTITY_MATCH)
+    BigDecimal sumTotalCostByHospitalIdAndShippingStatus(
+            @Param("hospitalId") Long hospitalId,
+            @Param("shippingStatus") String shippingStatus);
+
+    @Query("SELECT o FROM EquipmentOrder o "
+            + "WHERE LOWER(o.shippingStatus) = LOWER(:shippingStatus) AND " + HOSPITAL_ID_IDENTITY_MATCH)
+    List<EquipmentOrder> findByHospitalIdAndShippingStatus(
+            @Param("hospitalId") Long hospitalId,
+            @Param("shippingStatus") String shippingStatus);
+
+    @Query("SELECT order FROM EquipmentOrder order "
+            + "WHERE EXISTS (SELECT shipment FROM ShipmentTracking shipment "
+            + "WHERE shipment.orderId = order.id AND shipment.supplierId = :supplierId)")
+    Page<EquipmentOrder> findBySupplierId(
+            @Param("supplierId") Long supplierId,
+            Pageable pageable);
+
+    @Query("SELECT order FROM EquipmentOrder order "
+            + "WHERE EXISTS (SELECT shipment FROM ShipmentTracking shipment "
+            + "WHERE shipment.orderId = order.id AND shipment.supplierId = :supplierId) "
+            + "AND (:status IS NULL OR UPPER(order.status) = UPPER(:status))")
+    Page<EquipmentOrder> findBySupplierIdWithStatus(
+            @Param("supplierId") Long supplierId,
+            @Param("status") String status,
+            Pageable pageable);
+
+    @Query("SELECT order FROM EquipmentOrder order "
+            + "WHERE EXISTS (SELECT shipment FROM ShipmentTracking shipment "
+            + "WHERE shipment.orderId = order.id AND shipment.supplierId = :supplierId)")
+    List<EquipmentOrder> findBySupplierId(@Param("supplierId") Long supplierId);
+
+    @Query("SELECT order FROM EquipmentOrder order WHERE order.id = :orderId "
+            + "AND EXISTS (SELECT shipment FROM ShipmentTracking shipment "
+            + "WHERE shipment.orderId = order.id AND shipment.supplierId = :supplierId)")
+    Optional<EquipmentOrder> findByIdAndSupplierId(
+            @Param("orderId") Long orderId,
+            @Param("supplierId") Long supplierId);
+
     List<EquipmentOrder> findByStatus(String status);
 
     List<EquipmentOrder> findByEquipmentId(String equipmentId);
@@ -82,14 +173,11 @@ public interface EquipmentOrderRepository extends JpaRepository<EquipmentOrder, 
     // criteria query for the entity. As derived queries these asked for `deleted = true AND
     // deleted = false` and could never return a row, so an archived order could not be listed,
     // restored or purged.
-
-    @Query(value = "SELECT * FROM equipment_orders WHERE deleted = TRUE", nativeQuery = true)
-    List<EquipmentOrder> findByDeletedTrue();
-
-    @Query(value = "SELECT * FROM equipment_orders WHERE deleted = TRUE",
-            countQuery = "SELECT COUNT(*) FROM equipment_orders WHERE deleted = TRUE",
-            nativeQuery = true)
-    Page<EquipmentOrder> findByDeletedTrue(Pageable pageable);
+    //
+    // Being native also means Hibernate applies nothing else either - no tenant filter comes for
+    // free here, so every archive query below carries its own owner predicate. An archive lookup
+    // that takes only an id is not offered, because the two callers that need one (restore and
+    // permanent delete) both act on the row they find.
 
     @Query(value = "SELECT * FROM equipment_orders WHERE deleted = TRUE AND hospital = :hospital",
             countQuery = "SELECT COUNT(*) FROM equipment_orders WHERE deleted = TRUE AND hospital = :hospital",
@@ -98,6 +186,33 @@ public interface EquipmentOrderRepository extends JpaRepository<EquipmentOrder, 
             @Param("hospital") String hospital,
             Pageable pageable);
 
-    @Query(value = "SELECT * FROM equipment_orders WHERE id = :id AND deleted = TRUE", nativeQuery = true)
-    Optional<EquipmentOrder> findByIdAndDeletedTrue(@Param("id") Long id);
+    /**
+     * The archived orders one supplier is assigned to, through a shipment record.
+     *
+     * <p>Mirrors {@link #findBySupplierId(Long, Pageable)} for the archive. The unscoped
+     * {@code findByDeletedTrue(Pageable)} this replaces returned every archived order in the
+     * deployment to any supplier caller.</p>
+     */
+    @Query(value = "SELECT o.* FROM equipment_orders o WHERE o.deleted = TRUE "
+            + "AND EXISTS (SELECT 1 FROM shipment_trackings s "
+            + "WHERE s.order_id = o.id AND s.supplier_id = :supplierId)",
+            countQuery = "SELECT COUNT(*) FROM equipment_orders o WHERE o.deleted = TRUE "
+                    + "AND EXISTS (SELECT 1 FROM shipment_trackings s "
+                    + "WHERE s.order_id = o.id AND s.supplier_id = :supplierId)",
+            nativeQuery = true)
+    Page<EquipmentOrder> findBySupplierIdAndDeletedTrue(
+            @Param("supplierId") Long supplierId,
+            Pageable pageable);
+
+    /**
+     * One archived order, scoped to the hospital that owns it.
+     *
+     * <p>The owner predicate is in the query rather than in a caller-side check so that restore and
+     * permanent delete cannot reach another tenant's archive by id alone.</p>
+     */
+    @Query(value = "SELECT * FROM equipment_orders WHERE id = :id AND deleted = TRUE "
+            + "AND hospital = :hospital", nativeQuery = true)
+    Optional<EquipmentOrder> findByIdAndHospitalAndDeletedTrue(
+            @Param("id") Long id,
+            @Param("hospital") String hospital);
 }

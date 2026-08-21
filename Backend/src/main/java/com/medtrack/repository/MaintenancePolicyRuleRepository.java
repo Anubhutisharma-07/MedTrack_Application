@@ -16,6 +16,7 @@ import java.util.Optional;
 public interface MaintenancePolicyRuleRepository extends JpaRepository<MaintenancePolicyRule, Long> {
 
     List<MaintenancePolicyRule> findByHospitalId(Long hospitalId);
+    List<MaintenancePolicyRule> findByActiveTrueAndDeletedFalse();
 
     Optional<MaintenancePolicyRule> findByIdAndHospitalId(Long id, Long hospitalId);
 
@@ -32,4 +33,12 @@ public interface MaintenancePolicyRuleRepository extends JpaRepository<Maintenan
     List<MaintenancePolicyRule> findByHospitalIdAndActiveTrue(Long hospitalId);
 
     List<MaintenancePolicyRule> findByHospitalIdAndRuleScope(Long hospitalId, MaintenanceRuleScope ruleScope);
+
+    /**
+     * Retrieves active individual equipment maintenance policy rules associated with an equipment record.
+     */
+    List<MaintenancePolicyRule> findByHospitalIdAndEquipmentRecordIdAndActiveTrue(
+            Long hospitalId,
+            Long equipmentRecordId
+    );
 }

@@ -110,6 +110,7 @@ public class OperationsEvent {
         MAINTENANCE_COMPLETED,
         MAINTENANCE_OVERDUE,
         MAINTENANCE_RECURRENCE_CREATED,
+        MAINTENANCE_DUE_SOON,
 
         // Equipment
         EQUIPMENT_CREATED,

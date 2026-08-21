@@ -35,26 +35,76 @@ export const DualRangeSlider = ({
   ariaLabelMax = 'Maximum value',
   id,
 }) => {
+  const span = max - min;
+  // Never let the enforced thumb distance exceed the track itself, otherwise the clamp
+  // bounds invert and values can escape [min, max] entirely.
+  const minDistance = Math.min(minStepsBetweenThumbs * step, Math.max(span, 0));
+
+  // Clamp helper
+  const clampValue = useCallback(
+    (val, lowerBound, upperBound) => {
+      const rounded = Math.round((val - min) / step) * step + min;
+      return Math.min(Math.max(rounded, lowerBound), upperBound);
+    },
+    [min, step]
+  );
+
+  // Clamp a [minVal, maxVal] pair into the slider bounds while keeping the enforced thumb
+  // distance. Guarantees values never render off-scale (thumb past the track, "Selected"
+  // label outside min/max) when callers pass out-of-range values, or when the bounds shrink
+  // after the value was already chosen.
+  const clampRange = useCallback(
+    (lo, hi) => {
+      const upperLo = Math.max(min, max - minDistance);
+      const lowerHi = Math.min(max, min + minDistance);
+      let clampedLo = clampValue(lo, min, upperLo);
+      let clampedHi = clampValue(hi, lowerHi, max);
+      if (clampedLo > clampedHi - minDistance) {
+        clampedLo = Math.min(clampedLo, max - minDistance);
+        clampedHi = Math.max(clampedHi, clampedLo + minDistance);
+      }
+      return [clampedLo, clampedHi];
+    },
+    [clampValue, min, max, minDistance]
+  );
+
   const [internalValue, setInternalValue] = useState(() => {
-    if (Array.isArray(value) && value.length === 2) return value;
-    return defaultValue;
+    const initial = Array.isArray(value) && value.length === 2 ? value : defaultValue;
+    return clampRange(initial[0], initial[1]);
   });
 
   const [activeThumb, setActiveThumb] = useState(null); // 'min' | 'max' | null
   const [isHovered, setIsHovered] = useState(false);
   const trackRef = useRef(null);
 
-  // Sync controlled value prop
+  // Sync controlled value prop, clamped into the current bounds.
   useEffect(() => {
     if (Array.isArray(value) && value.length === 2) {
-      setInternalValue(value);
+      const [clampedLo, clampedHi] = clampRange(value[0], value[1]);
+      if (clampedLo !== value[0] || clampedHi !== value[1]) {
+        setInternalValue([clampedLo, clampedHi]);
+        if (onChange) onChange([clampedLo, clampedHi]);
+      } else {
+        setInternalValue(value);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
+
+  // Re-clamp whenever the bounds / step / spacing change after the value was set, so a
+  // shrink of min/max (e.g. the Studio's bound inputs) cannot leave the range outside the
+  // track or closer together than the enforced distance.
+  useEffect(() => {
+    const [clampedLo, clampedHi] = clampRange(internalValue[0], internalValue[1]);
+    if (clampedLo !== internalValue[0] || clampedHi !== internalValue[1]) {
+      setInternalValue([clampedLo, clampedHi]);
+      if (onChange) onChange([clampedLo, clampedHi]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [min, max, step, minStepsBetweenThumbs]);
 
   const currentMin = internalValue[0];
   const currentMax = internalValue[1];
-
-  const minDistance = minStepsBetweenThumbs * step;
 
   // Calculate percentage positions for styling
   const getPercent = useCallback(
@@ -68,15 +118,6 @@ export const DualRangeSlider = ({
 
   const minPercent = getPercent(currentMin);
   const maxPercent = getPercent(currentMax);
-
-  // Clamp helper
-  const clampValue = useCallback(
-    (val, lowerBound, upperBound) => {
-      const rounded = Math.round((val - min) / step) * step + min;
-      return Math.min(Math.max(rounded, lowerBound), upperBound);
-    },
-    [min, step]
-  );
 
   // Update value helper with collision safety
   const updateValues = useCallback(

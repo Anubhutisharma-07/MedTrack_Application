@@ -125,20 +125,13 @@ public class SecurityConfig {
                     "/api/auth/forgot-password",
                     "/api/auth/verify-otp",
                     "/api/auth/reset-password",
-                    // /api/auth/scim/**, /api/auth/commandcenter/**, /api/auth/vulnerability/**
-                    // and /api/auth/pam/** used to be listed here. None of them is an
-                    // authentication endpoint: they provision and deprovision user accounts,
-                    // request and approve privilege elevation, acknowledge security alerts and
-                    // govern CVE patching. Because permitAll() matchers are evaluated before the
-                    // trailing .anyRequest().authenticated() rule, every route under them -
-                    // including every mutating one - was reachable with no token at all. Explicit
-                    // rules for all four trees are declared below.
                     "/h2-console/**",
                     "/error",
                     "/v3/api-docs/**",
                     "/swagger-ui/**",
                     "/swagger-ui.html"
                 ).permitAll()
+
                 .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/info").permitAll()
                 // Resolves the SSO identity provider for an email domain before the caller
                 // has a session, so this single lookup endpoint must stay public.
@@ -187,6 +180,21 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/auth/pam/**").hasRole("HOSPITAL")
                 .requestMatchers(HttpMethod.DELETE, "/api/auth/pam/**").hasRole("HOSPITAL")
 
+                // OAuth 2.1 Security Gateway boundaries:
+                // Token issuance, introspection, revocation and rotation change security state
+                // (and issue/revoke tokens for ANY subject), so only HOSPITAL administrators may
+                // call these routes. Read endpoints stay authenticated; per-user ownership
+                // (self vs. HOSPITAL admin) is enforced in the controller via OwnershipAccessGuard.
+                .requestMatchers(HttpMethod.GET, "/api/auth/oauth21/**").authenticated()
+                .requestMatchers("/api/auth/oauth21/**").hasRole("HOSPITAL")
+
+                // JWT Security Gateway boundaries:
+                // Token issuance, validation, revocation, signing-key rotation and purge all
+                // mutate security state, so only HOSPITAL administrators may call them. JWKS
+                // discovery and audit metrics are read-only for any authenticated caller.
+                .requestMatchers(HttpMethod.GET, "/api/auth/jwt/**").authenticated()
+                .requestMatchers("/api/auth/jwt/**").hasRole("HOSPITAL")
+
                 // SCIM identity provisioning:
                 // POST /users/provision creates accounts and POST /users/deprovision disables
                 // them, so an anonymous caller could both mint accounts and lock out any existing
@@ -195,6 +203,19 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/auth/scim/**").hasRole("HOSPITAL")
                 .requestMatchers(HttpMethod.PUT, "/api/auth/scim/**").hasRole("HOSPITAL")
                 .requestMatchers(HttpMethod.DELETE, "/api/auth/scim/**").hasRole("HOSPITAL")
+
+                // RFC 7644 SCIM 2.0 provisioning gateway (/api/scim/v2/**):
+                // Same account create/replace/deprovision and directory-enumeration surface as
+                // /api/auth/scim/**, exposed at the standards-compliant base path. Without these
+                // matchers the endpoints fell through to .anyRequest().authenticated(), letting
+                // any SUPPLIER/TECHNICIAN mint accounts, lock out users and list the directory.
+                // Reads stay authenticated; every mutating call requires a HOSPITAL admin.
+                // Method-level @PreAuthorize on ScimUserProvisioningController enforces the same
+                // boundary as defense in depth.
+                .requestMatchers(HttpMethod.GET, "/api/scim/**").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/scim/**").hasRole("HOSPITAL")
+                .requestMatchers(HttpMethod.PUT, "/api/scim/**").hasRole("HOSPITAL")
+                .requestMatchers(HttpMethod.DELETE, "/api/scim/**").hasRole("HOSPITAL")
 
                 // Security Command Center:
                 // /summary aggregates the security posture of the whole deployment, and
@@ -212,6 +233,96 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/auth/vulnerability/**").hasRole("HOSPITAL")
                 .requestMatchers(HttpMethod.PUT, "/api/auth/vulnerability/**").hasRole("HOSPITAL")
                 .requestMatchers(HttpMethod.DELETE, "/api/auth/vulnerability/**").hasRole("HOSPITAL")
+
+                // Security administration modules added after the original authorization matrix.
+                // Their policies, telemetry, cloud posture, playbooks and threat records affect
+                // the security posture of the full deployment. Read access remains available to
+                // signed-in users; every state-changing route requires a hospital administrator.
+                .requestMatchers(HttpMethod.GET,
+                    "/api/auth/compliance/**",
+                    "/api/auth/cspm/**",
+                    "/api/auth/evidence/**",
+                    "/api/auth/governance/**",
+                    "/api/auth/microsegmentation/**",
+                    "/api/auth/observability/**",
+                    "/api/auth/playbook/**",
+                    "/api/auth/posture/**",
+                    "/api/auth/reporting/**",
+                    "/api/auth/saml/**",
+                    "/api/auth/sbom/**",
+                    "/api/auth/siem/**",
+                    "/api/auth/soar/**",
+                    "/api/auth/threat/**",
+                    "/api/auth/threatintel/**"
+                ).authenticated()
+                .requestMatchers(HttpMethod.POST,
+                    "/api/auth/compliance/**",
+                    "/api/auth/cspm/**",
+                    "/api/auth/evidence/**",
+                    "/api/auth/governance/**",
+                    "/api/auth/microsegmentation/**",
+                    "/api/auth/observability/**",
+                    "/api/auth/playbook/**",
+                    "/api/auth/posture/**",
+                    "/api/auth/reporting/**",
+                    "/api/auth/saml/**",
+                    "/api/auth/sbom/**",
+                    "/api/auth/siem/**",
+                    "/api/auth/soar/**",
+                    "/api/auth/threat/**",
+                    "/api/auth/threatintel/**"
+                ).hasRole("HOSPITAL")
+                .requestMatchers(HttpMethod.PUT,
+                    "/api/auth/compliance/**",
+                    "/api/auth/cspm/**",
+                    "/api/auth/evidence/**",
+                    "/api/auth/governance/**",
+                    "/api/auth/microsegmentation/**",
+                    "/api/auth/observability/**",
+                    "/api/auth/playbook/**",
+                    "/api/auth/posture/**",
+                    "/api/auth/reporting/**",
+                    "/api/auth/saml/**",
+                    "/api/auth/sbom/**",
+                    "/api/auth/siem/**",
+                    "/api/auth/soar/**",
+                    "/api/auth/threat/**",
+                    "/api/auth/threatintel/**"
+                ).hasRole("HOSPITAL")
+                .requestMatchers(HttpMethod.PATCH,
+                    "/api/auth/compliance/**",
+                    "/api/auth/cspm/**",
+                    "/api/auth/evidence/**",
+                    "/api/auth/governance/**",
+                    "/api/auth/microsegmentation/**",
+                    "/api/auth/observability/**",
+                    "/api/auth/playbook/**",
+                    "/api/auth/posture/**",
+                    "/api/auth/reporting/**",
+                    "/api/auth/saml/**",
+                    "/api/auth/sbom/**",
+                    "/api/auth/siem/**",
+                    "/api/auth/soar/**",
+                    "/api/auth/threat/**",
+                    "/api/auth/threatintel/**"
+                ).hasRole("HOSPITAL")
+                .requestMatchers(HttpMethod.DELETE,
+                    "/api/auth/compliance/**",
+                    "/api/auth/cspm/**",
+                    "/api/auth/evidence/**",
+                    "/api/auth/governance/**",
+                    "/api/auth/microsegmentation/**",
+                    "/api/auth/observability/**",
+                    "/api/auth/playbook/**",
+                    "/api/auth/posture/**",
+                    "/api/auth/reporting/**",
+                    "/api/auth/saml/**",
+                    "/api/auth/sbom/**",
+                    "/api/auth/siem/**",
+                    "/api/auth/soar/**",
+                    "/api/auth/threat/**",
+                    "/api/auth/threatintel/**"
+                ).hasRole("HOSPITAL")
 
                 // Equipment module boundaries:
                 // GET requests: Authorized users.
@@ -242,6 +353,15 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/procurement/**").hasRole("HOSPITAL")
                 .requestMatchers(HttpMethod.DELETE, "/api/procurement/**").hasRole("HOSPITAL")
 
+                // Multi-supplier tender / e-auction workflow boundaries:
+                // Reads (tenders, bids, audit): authorized users, with per-record visibility
+                // enforced in TenderService. Bid submission/withdrawal: suppliers only.
+                // Publish, rounds, award, and cancel: Hospital admins only.
+                .requestMatchers(HttpMethod.GET, "/api/tenders/**").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/tenders/*/bids").hasRole("SUPPLIER")
+                .requestMatchers(HttpMethod.POST, "/api/tenders/*/bids/*/withdraw").hasRole("SUPPLIER")
+                .requestMatchers(HttpMethod.POST, "/api/tenders/**").hasRole("HOSPITAL")
+
                 // Maintenance schedules boundaries:
                 // GET requests: Authorized users.
                 // Write/Modify: Restricted to Hospital admins.
@@ -256,17 +376,24 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/maintenance/**").hasRole("TECHNICIAN")
                 .requestMatchers(HttpMethod.DELETE, "/api/maintenance/**").hasRole("HOSPITAL")
 
-                // Shipment tracking boundaries:
-                // GET requests: Any authenticated user.
+                // Supplier portal boundaries:
+                // All supplier-scoped endpoints require SUPPLIER authority to protect vendor isolation.
+                // Supplier orders, portal metrics, and supplier-specific shipment lookups:
+                .requestMatchers("/api/supplier/**").hasRole("SUPPLIER")
+                .requestMatchers("/api/shipments/supplier/**").hasRole("SUPPLIER")
+
+                // General shipment tracking boundaries:
+                // General GET requests: Any authenticated user.
                 // Write/Modify: Restricted to Suppliers.
                 .requestMatchers(HttpMethod.GET, "/api/shipments/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/shipments").hasRole("SUPPLIER")
                 .requestMatchers(HttpMethod.PUT, "/api/shipments/**").hasRole("SUPPLIER")
 
                 // Real-time operations event stream boundaries:
-                // WebSocket/SSE endpoint for authenticated users.
+                // The Activity Center is hospital-scoped; suppliers and technicians have no
+                // hospital profile with which to authorize a stream subscription.
                 // REST endpoints for event history and read receipts.
-                .requestMatchers("/api/events/stream/**").authenticated()
+                .requestMatchers("/api/events/stream/**").hasRole("HOSPITAL")
                 .requestMatchers(HttpMethod.GET, "/api/events/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/events/**").authenticated()
 
@@ -308,4 +435,13 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
+
+    /**
+     * Audit Event Logger for Authentication Failures and Security Violations
+     */
+    @Bean
+    public org.springframework.security.authentication.event.LoggerListener loggerListener() {
+        return new org.springframework.security.authentication.event.LoggerListener();
+    }
 }
+

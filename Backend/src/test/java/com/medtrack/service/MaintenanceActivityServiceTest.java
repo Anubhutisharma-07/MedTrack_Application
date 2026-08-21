@@ -3,6 +3,7 @@ package com.medtrack.service;
 import com.medtrack.auth.model.AccountStatus;
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.MaintenanceActivityPageResponse;
 import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.Hospital;
@@ -49,7 +50,7 @@ class MaintenanceActivityServiceTest {
     @BeforeEach
     void setUp() {
         service = new MaintenanceActivityService(
-                activityRepository, taskRepository, userRepository, hospitalRepository);
+                activityRepository, taskRepository, userRepository, hospitalRepository, new PaginationConfig());
         hospitalUser = user(1L, "hospital@medtrack.com", "hospital");
         technician = user(2L, "tech@medtrack.com", "technician");
         task = MaintenanceTask.builder().id(42L).taskCode("MNT-42").hospitalId(7L)

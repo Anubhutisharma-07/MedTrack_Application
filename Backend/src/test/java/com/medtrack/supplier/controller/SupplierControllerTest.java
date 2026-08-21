@@ -1,5 +1,6 @@
 package com.medtrack.supplier.controller;
 
+import com.medtrack.config.PaginationConfig;
 import com.medtrack.exception.GlobalExceptionHandler;
 import com.medtrack.model.EquipmentOrder;
 import com.medtrack.supplier.dto.SupplierPerformanceResponse;
@@ -50,7 +51,7 @@ public class SupplierControllerTest {
         @BeforeEach
         void setUp() {
                 supplierController = new SupplierController(supplierOrderService, supplierPerformanceService,
-                                supplierAccessGuard);
+                                supplierAccessGuard, new PaginationConfig());
                 mockMvc = MockMvcBuilders.standaloneSetup(supplierController)
                                 .setControllerAdvice(new GlobalExceptionHandler())
                                 .build();
@@ -168,7 +169,7 @@ public class SupplierControllerTest {
                 mockMvc.perform(get("/api/supplier/orders")
                                 .param("page", "-1"))
                                 .andExpect(status().isBadRequest())
-                                .andExpect(jsonPath("$.message").value("Page index must not be less than zero"));
+                                .andExpect(jsonPath("$.detail").value("Page index must not be less than zero"));
         }
 
         @Test
@@ -218,7 +219,7 @@ public class SupplierControllerTest {
                                 .param("newStatus", "SHIPPED")
                                 .accept(MediaType.APPLICATION_JSON))
                                 .andExpect(status().isBadRequest())
-                                .andExpect(jsonPath("$.message").value("Invalid status transition"));
+                                .andExpect(jsonPath("$.detail").value("Invalid status transition"));
         }
 
         @Test
@@ -231,7 +232,7 @@ public class SupplierControllerTest {
                                 .param("newStatus", "CONFIRMED")
                                 .accept(MediaType.APPLICATION_JSON))
                                 .andExpect(status().isNotFound())
-                                .andExpect(jsonPath("$.message").value("Order not found with id: 99"));
+                                .andExpect(jsonPath("$.detail").value("Order not found with id: 99"));
         }
 
         @Test

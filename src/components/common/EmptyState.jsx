@@ -1,12 +1,16 @@
-export default function EmptyState({ icon, title = "No data found", description, action }) {
+/**
+ * Shared empty-state primitive.
+ *
+ * Six hub pages previously defined their own `EmptyState` component inline,
+ * identical except for the icon. This module is the single source of truth;
+ * pass the page's domain icon via `icon`.
+ */
+
+export function EmptyState({ message, icon: Icon }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[200px] gap-4 text-center px-4">
-      {icon && <span className="text-4xl">{icon}</span>}
-      <div>
-        <p className="text-primary font-semibold">{title}</p>
-        {description && <p className="text-sm text-secondary mt-1">{description}</p>}
-      </div>
-      {action && action}
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 py-14 text-slate-500">
+      <Icon size={28} className="mb-2 opacity-40" />
+      <p className="text-sm">{message}</p>
     </div>
   );
 }

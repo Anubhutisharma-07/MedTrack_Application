@@ -4,6 +4,7 @@ import com.medtrack.supplier.dto.SupplierPerformanceResponse;
 import com.medtrack.supplier.model.ShipmentStatus;
 import com.medtrack.supplier.model.ShipmentTracking;
 import com.medtrack.supplier.repository.ShipmentTrackingRepository;
+import com.medtrack.supplier.metrics.MetricsService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ public class SupplierPerformanceService {
     private static final Logger log = LoggerFactory.getLogger(SupplierPerformanceService.class);
 
     private final ShipmentTrackingRepository shipmentTrackingRepository;
+    private final MetricsService metricsService;
 
     @Value("${app.supplier.scoring.ontime-weight:0.8}")
     private double onTimeWeight;
@@ -127,6 +129,8 @@ public class SupplierPerformanceService {
                     .build();
 
             kafkaTemplate.send(analyticsTopic, String.valueOf(supplierId), event);
+            metricsService.incrementKafkaPublish();
+            metricsService.incrementSupplierPerformanceUpdates();
             log.info("Published analytics performance event for supplier ID: {} with score: {:.2f}", supplierId, metrics.getPerformanceScore());
         } catch (Exception e) {
             log.error("Failed to publish analytics event for supplier ID: {} - {}", supplierId, e.getMessage(), e);

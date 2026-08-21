@@ -4,8 +4,11 @@ import "lenis/dist/lenis.css";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider, useToast } from "./context/ToastContext";
 import ToastContainer from "./components/common/ToastContainer";
+import CommandPalette from "./components/common/CommandPalette";
+import useKeyboardShortcuts from "./hooks/useKeyboardShortcuts";
 import { errorEmitter } from "./services/HttpService";
 import ErrorBoundary from "./components/common/ErrorBoundary";
+import SessionGuard from "./components/common/SessionGuard";
 import Navbar from "./components/common/Navbar";
 import Footer from "./components/common/Footer";
 import ScrollToTopButton from "./components/common/ScrollToTopButton";
@@ -51,7 +54,15 @@ function AppContent() {
   const initialRoute = getRouteStateFromPath();
   const [currentPage, setCurrentPage] = useState(initialRoute.page);
   const [pageData, setPageData] = useState(initialRoute.data);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { addToast } = useToast();
+
+  // Ctrl/Cmd+K opens the command palette anywhere in the app (public pages
+  // included - it only lists destinations the visitor can actually reach).
+  useKeyboardShortcuts({
+    "ctrl+k": () => setPaletteOpen((open) => !open),
+    "meta+k": () => setPaletteOpen((open) => !open),
+  });
 
   useEffect(() => {
     const handler = (event) => {
@@ -90,14 +101,24 @@ function AppContent() {
   // /equipment. Both sides now derive the substitution from resolveEffectivePage.
   const showChrome = hasChrome(resolveEffectivePage(user, currentPage));
 
+  // SessionGuard sits inside ToastProvider (it needs toasts) and wraps the whole
+  // layout so the idle-timeout warning can render above every page. It is a no-op
+  // for signed-out visitors and enforces the inactivity auto-lock only once a
+  // user is signed in - see SessionGuard.jsx.
   return (
-    <ReactLenis root>
+    <SessionGuard>
+      <ReactLenis root>
       <div
         className="flex flex-col min-h-screen bg-surface text-primary transition-colors duration-200"
         style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
       >
         <CustomCursor />
         <ToastContainer />
+        <CommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          onNavigate={handleNavigate}
+        />
         {showChrome && (
           <Navbar onNavigate={handleNavigate} currentPage={currentPage} />
         )}
@@ -114,7 +135,8 @@ function AppContent() {
         <ScrollToTopButton />
         <CookieBanner onNavigate={handleNavigate} />
       </div>
-    </ReactLenis>
+      </ReactLenis>
+    </SessionGuard>
   );
 }
 

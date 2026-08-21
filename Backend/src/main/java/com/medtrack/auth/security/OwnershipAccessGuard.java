@@ -34,11 +34,59 @@ public class OwnershipAccessGuard {
         if (hasRole(authentication, "HOSPITAL")) {
             return;
         }
-        User caller = userRepository.findByEmail(authentication.getName())
-                .orElseThrow(() -> new AccessDeniedException("Authenticated user could not be resolved"));
+        User caller = resolveCaller(authentication);
         if (!caller.getId().equals(targetUserId)) {
             throw new AccessDeniedException("You are not authorized to access this account's security data");
         }
+    }
+
+    /**
+     * Confirms the authenticated caller may act on a target identified by a string subject
+     * identifier (e.g. the {@code subjectUserId} stored on OAuth 2.1 token records).
+     * Hospital administrators may act on any subject; all other callers may only act on
+     * their own account.
+     *
+     * @param authentication  the authenticated caller
+     * @param targetSubjectId the target subject identifier the request would operate on
+     * @throws AccessDeniedException if the caller is neither the target subject nor a HOSPITAL admin
+     */
+    public void assertSelfOrHospitalAdmin(Authentication authentication, String targetSubjectId) {
+        if (hasRole(authentication, "HOSPITAL")) {
+            return;
+        }
+        if (targetSubjectId == null || targetSubjectId.isBlank()) {
+            throw new AccessDeniedException("You are not authorized to access this account's security data");
+        }
+        Long callerId = getCallerUserId(authentication);
+        if (!String.valueOf(callerId).equals(targetSubjectId)) {
+            throw new AccessDeniedException("You are not authorized to access this account's security data");
+        }
+    }
+
+    /**
+     * Resolves the database ID of the authenticated caller.
+     *
+     * @param authentication the authenticated caller
+     * @return the caller's user database ID
+     * @throws AccessDeniedException if the caller cannot be resolved to a known account
+     */
+    public Long getCallerUserId(Authentication authentication) {
+        return resolveCaller(authentication).getId();
+    }
+
+    /**
+     * Reports whether the authenticated caller holds the HOSPITAL administrator role.
+     *
+     * @param authentication the authenticated caller
+     * @return {@code true} when the caller is a HOSPITAL administrator
+     */
+    public boolean isHospitalAdmin(Authentication authentication) {
+        return hasRole(authentication, "HOSPITAL");
+    }
+
+    private User resolveCaller(Authentication authentication) {
+        return userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new AccessDeniedException("Authenticated user could not be resolved"));
     }
 
     private boolean hasRole(Authentication authentication, String role) {

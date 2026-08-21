@@ -51,6 +51,17 @@ class SourceLayoutConventionTest {
     private static final String ROOT_PACKAGE = "com.medtrack";
 
     /**
+     * Import prefixes that only exist on the test classpath. A main source importing any of these
+     * cannot compile, whatever the file is called.
+     */
+    private static final List<String> TEST_ONLY_IMPORT_PREFIXES = List.of(
+            "org.junit",
+            "org.mockito",
+            "org.assertj",
+            "org.springframework.boot.test",
+            "org.springframework.test");
+
+    /**
      * Matches a {@code package} declaration at the start of a line. Occurrences inside block
      * comments and string literals are excluded by {@link #stripCommentsAndStrings(String)} before
      * this pattern is applied.
@@ -182,6 +193,56 @@ class SourceLayoutConventionTest {
                 String.join("\n", offenders)));
     }
 
+    /**
+     * Test sources belong in {@code src/test/java}. A test class that lands in {@code src/main/java}
+     * does not merely sit in the wrong place, it takes the build down: JUnit, Mockito and AssertJ
+     * are {@code test}-scoped, so every {@code @Test}, {@code @Mock} and {@code assertThat} in the
+     * file resolves to nothing during the {@code compile} phase and the module produces no classes
+     * at all.
+     *
+     * <p>Detection is deliberately two-pronged. A file named {@code *Test.java} or
+     * {@code *Tests.java} is caught on its name alone, and any file importing a test-only library
+     * is caught regardless of what it is called - a shared fixture such as
+     * {@code EquipmentFixtures.java} carrying a Mockito import fails in exactly the same way.</p>
+     */
+    @Test
+    @DisplayName("no test sources live under src/main/java")
+    void noTestSourcesInTheMainTree() {
+        List<String> offenders = new ArrayList<>();
+
+        for (Path source : mainJavaSources()) {
+            String fileName = source.getFileName().toString();
+            String body = stripCommentsAndStrings(read(source));
+
+            List<String> reasons = new ArrayList<>();
+            if (fileName.endsWith("Test.java") || fileName.endsWith("Tests.java")) {
+                reasons.add("is named like a test class");
+            }
+            for (String testOnlyPackage : TEST_ONLY_IMPORT_PREFIXES) {
+                if (importsPackage(body, testOnlyPackage)) {
+                    reasons.add("imports " + testOnlyPackage);
+                }
+            }
+
+            if (!reasons.isEmpty()) {
+                offenders.add("  %s%n      %s"
+                        .formatted(relativise(source), String.join("; ", reasons)));
+            }
+        }
+
+        assertTrue(offenders.isEmpty(), () -> """
+                %d test source(s) live under src/main/java.
+
+                JUnit, Mockito and AssertJ are test-scoped dependencies. A test class compiled as
+                part of the main source set cannot resolve a single one of their symbols, so
+                `mvn compile` fails and no part of the backend builds - including every module the
+                offending file has nothing to do with.
+
+                Move the file to src/test/java, keeping its package directory.
+
+                %s""".formatted(offenders.size(), String.join("\n", offenders)));
+    }
+
     @Test
     @DisplayName("the source tree is actually being scanned")
     void sourceTreeIsNonEmpty() {
@@ -213,6 +274,19 @@ class SourceLayoutConventionTest {
     private static String firstPublicTypeName(String source) {
         Matcher matcher = PUBLIC_TYPE_DECLARATION.matcher(stripCommentsAndStrings(source));
         return matcher.find() ? matcher.group(1) : null;
+    }
+
+    /**
+     * Whether {@code body} contains an {@code import} of {@code packagePrefix} or anything beneath
+     * it. Anchored at the start of a line and terminated by {@code .} or {@code ;} so that
+     * {@code org.junitextras.Foo} does not read as {@code org.junit}, and matched against a body
+     * that has already had comments and string literals blanked out.
+     */
+    private static boolean importsPackage(String body, String packagePrefix) {
+        Pattern importPattern = Pattern.compile(
+                "^\\s*import\\s+(?:static\\s+)?" + Pattern.quote(packagePrefix) + "[.;]",
+                Pattern.MULTILINE);
+        return importPattern.matcher(body).find();
     }
 
     /**

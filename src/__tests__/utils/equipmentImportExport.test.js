@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  DATE_HEADERS,
   IMPORT_HEADERS,
   parseImportFile,
   rowsToCsv,
@@ -113,6 +114,140 @@ MRI Scanner,"$250,000.00",10,straight line,Radiology
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].Name).toBe("Ultrasound");
     expect(result.rows[0].Department).toBe("Cardiology");
+  });
+});
+
+/**
+ * Date handling is the part of the import most likely to be wrong without anyone noticing: the row
+ * still imports, it just carries a different date than the file did. These cover the three ways
+ * that used to happen - the UTC round trip that moved every non-ISO date back a day, the warranty
+ * start column that was never normalised at all, and the numeric cells that were silently blanked.
+ */
+describe("date normalisation", () => {
+  const headerRow = "Name,Department,Purchase Date,Warranty Start Date,Warranty Expiry";
+
+  const parseDates = async (row) => {
+    const result = await parseImportFile(
+      makeFile("dates.csv", `${headerRow}\n${row}\n`, "text/csv")
+    );
+    expect(result.error).toBeNull();
+    return result.rows[0];
+  };
+
+  it("keeps ISO dates exactly as written", async () => {
+    const row = await parseDates("MRI Scanner,Radiology,2025-06-12,2025-06-12,2027-06-12");
+
+    expect(row["Purchase Date"]).toBe("2025-06-12");
+    expect(row["Warranty Start Date"]).toBe("2025-06-12");
+    expect(row["Warranty Expiry"]).toBe("2027-06-12");
+  });
+
+  it("does not shift a slash date by a day in timezones ahead of UTC", async () => {
+    // The old implementation finished with new Date(text).toISOString().slice(0, 10). new Date()
+    // gives local midnight, toISOString() converts to UTC, and in IST that lands on the previous
+    // day - so this row used to import as 2025-06-11.
+    const row = await parseDates("MRI Scanner,Radiology,06/12/2025,06/12/2025,06/12/2027");
+
+    expect(row["Purchase Date"]).toBe("2025-06-12");
+    expect(row["Warranty Expiry"]).toBe("2027-06-12");
+  });
+
+  it("reads a day-first date as day-first when the first part cannot be a month", async () => {
+    const row = await parseDates("MRI Scanner,Radiology,13/06/2025,13/06/2025,31/12/2027");
+
+    expect(row["Purchase Date"]).toBe("2025-06-13");
+    expect(row["Warranty Expiry"]).toBe("2027-12-31");
+  });
+
+  it("accepts written-out month names in either order", async () => {
+    const first = await parseDates("MRI Scanner,Radiology,12 June 2025,,June 12 2027");
+    expect(first["Purchase Date"]).toBe("2025-06-12");
+    expect(first["Warranty Expiry"]).toBe("2027-06-12");
+
+    const abbreviated = await parseDates("MRI Scanner,Radiology,12 Jun 2025,,\"Jun 12, 2027\"");
+    expect(abbreviated["Purchase Date"]).toBe("2025-06-12");
+    expect(abbreviated["Warranty Expiry"]).toBe("2027-06-12");
+  });
+
+  it("passes an unrecognisable date through for the backend to report", async () => {
+    // Deliberately not guessed at here: a clear per-row error beats a plausible wrong date.
+    const row = await parseDates("MRI Scanner,Radiology,next tuesday,,2027-06-12");
+
+    expect(row["Purchase Date"]).toBe("next tuesday");
+  });
+
+  it("passes a day that does not exist through rather than rolling it forward", async () => {
+    // 31 April is not a date. Formatting it from components would have produced 1 May, which is a
+    // silent correction of the user's file; the backend should be the one to say so.
+    const row = await parseDates("MRI Scanner,Radiology,31/04/2027,,2027-06-12");
+
+    expect(row["Purchase Date"]).toBe("31/04/2027");
+  });
+
+  it("normalises Warranty Start Date from a real Excel date cell", async () => {
+    const XLSX = await import("xlsx");
+    // SheetJS hands date-formatted cells back as Excel serials. Warranty Start Date was missing
+    // from the date-column set, so this used to arrive as the string "45820".
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Name", "Department", "Purchase Date", "Warranty Start Date", "Warranty Expiry"],
+      ["MRI Scanner", "Radiology", new Date(2025, 5, 12), new Date(2025, 5, 12), new Date(2027, 5, 12)],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+    const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const result = await parseImportFile(
+      new File([buffer], "warranty.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+    );
+
+    expect(result.rows[0]["Warranty Start Date"]).toBe("2025-06-12");
+    expect(result.rows[0]["Purchase Date"]).toBe("2025-06-12");
+    expect(result.rows[0]["Warranty Expiry"]).toBe("2027-06-12");
+  });
+
+  it("passes a numeric cell that is not a plausible serial through instead of blanking it", async () => {
+    const XLSX = await import("xlsx");
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Name", "Department", "Purchase Date"],
+      ["MRI Scanner", "Radiology", 20250612],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+    const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+    const result = await parseImportFile(
+      new File([buffer], "numeric.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+    );
+
+    // Was "": the user saw an empty date in the preview with no explanation of what happened to it.
+    expect(result.rows[0]["Purchase Date"]).toBe("20250612");
+  });
+
+  it("maps every documented alias, including the ones with spaces in them", async () => {
+    const result = await parseImportFile(
+      makeFile(
+        "aliases.csv",
+        "Name,Department,Coverage Start,Date Purchased,Warranty Expiration\n" +
+          "MRI Scanner,Radiology,2025-06-12,2025-01-05,2027-06-12\n",
+        "text/csv"
+      )
+    );
+
+    // canonicalKey strips punctuation before the alias comparison, so an alias written with a
+    // space in it could never match. "Coverage Start" was reported as an unknown header.
+    expect(result.unknownHeaders).toEqual([]);
+    expect(result.rows[0]["Warranty Start Date"]).toBe("2025-06-12");
+    expect(result.rows[0]["Purchase Date"]).toBe("2025-01-05");
+    expect(result.rows[0]["Warranty Expiry"]).toBe("2027-06-12");
+  });
+
+  it("lists exactly the date columns the canonical headers contain", () => {
+    expect(DATE_HEADERS.every((header) => IMPORT_HEADERS.includes(header))).toBe(true);
+    expect(DATE_HEADERS).toEqual(["Purchase Date", "Warranty Start Date", "Warranty Expiry"]);
   });
 });
 

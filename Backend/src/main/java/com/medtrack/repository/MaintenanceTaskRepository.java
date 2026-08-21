@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,6 +37,17 @@ public interface MaintenanceTaskRepository extends JpaRepository<MaintenanceTask
             + "AND e.hospital_id = :hospitalId",
             nativeQuery = true)
     List<MaintenanceTask> findByHospitalId(@Param("hospitalId") Long hospitalId);
+
+    @Query(value = "SELECT mt.* FROM maintenance_tasks mt "
+            + "JOIN equipment e ON e.id = mt.equipment_record_id "
+            + "WHERE mt.deleted = FALSE "
+            + "AND mt.hospital_id = :hospitalId "
+            + "AND mt.equipment_record_id = :equipmentRecordId "
+            + "AND e.hospital_id = :hospitalId",
+            nativeQuery = true)
+    List<MaintenanceTask> findByHospitalIdAndEquipmentRecordId(
+            @Param("hospitalId") Long hospitalId,
+            @Param("equipmentRecordId") Long equipmentRecordId);
 
     @Query(value = "SELECT mt.* FROM maintenance_tasks mt "
             + "JOIN equipment e ON e.id = mt.equipment_record_id "
@@ -152,6 +164,141 @@ public interface MaintenanceTaskRepository extends JpaRepository<MaintenanceTask
     List<MaintenanceTask> findByEquipmentRecord_IdAndHospitalId(
             @Param("equipmentId") Long equipmentId,
             @Param("hospitalId") Long hospitalId);
+
+    // ---------------------------------------------------------------------
+    // Calendar queries
+    //
+    // These replace four derived queries named findByEquipmentHospitalId... . Spring Data resolves
+    // that name as the path `equipment.hospitalId`, and MaintenanceTask.equipment is the denormalised
+    // equipment *name* - a String, with no hospitalId on it - so the repository could not be built
+    // and the context failed to start. There is no scheduledDate property either; the date a task is
+    // due is `deadline`.
+    //
+    // Written as native queries for the same reason as the ownership-scoped queries above: the join
+    // on equipment keeps the dual-hospital invariant, and both ownership keys are checked so the
+    // calendar cannot read another tenant's schedule.
+    // ---------------------------------------------------------------------
+
+    @Query(value = "SELECT mt.* FROM maintenance_tasks mt "
+            + "JOIN equipment e ON e.id = mt.equipment_record_id "
+            + "WHERE mt.deleted = FALSE "
+            + "AND mt.hospital_id = :hospitalId "
+            + "AND e.hospital_id = :hospitalId "
+            + "AND mt.deadline BETWEEN :start AND :end "
+            + "ORDER BY mt.deadline ASC, mt.id ASC",
+            nativeQuery = true)
+    List<MaintenanceTask> findByHospitalIdAndDeadlineBetween(
+            @Param("hospitalId") Long hospitalId,
+            @Param("start") LocalDate start,
+            @Param("end") LocalDate end);
+
+    @Query(value = "SELECT mt.* FROM maintenance_tasks mt "
+            + "JOIN equipment e ON e.id = mt.equipment_record_id "
+            + "WHERE mt.deleted = FALSE "
+            + "AND mt.hospital_id = :hospitalId "
+            + "AND e.hospital_id = :hospitalId "
+            + "AND mt.deadline < :date "
+            + "AND mt.status <> 'COMPLETED' "
+            + "ORDER BY mt.deadline ASC, mt.id ASC",
+            nativeQuery = true)
+    List<MaintenanceTask> findOverdueByHospitalId(
+            @Param("hospitalId") Long hospitalId,
+            @Param("date") LocalDate date);
+
+    @Query("SELECT CASE WHEN COUNT(mt) > 0 THEN TRUE ELSE FALSE END FROM MaintenanceTask mt "
+            + "WHERE mt.deleted = FALSE "
+            + "AND mt.hospitalId = :hospitalId "
+            + "AND ((:equipmentRecordId IS NOT NULL AND mt.equipmentRecord.id = :equipmentRecordId) "
+            + "     OR (:equipmentCode IS NOT NULL AND mt.equipmentId = :equipmentCode)) "
+            + "AND LOWER(TRIM(mt.maintenanceType)) = LOWER(TRIM(:maintenanceType)) "
+            + "AND mt.status IN :activeStatuses")
+    boolean existsActiveTaskForEquipmentWithCode(
+            @Param("hospitalId") Long hospitalId,
+            @Param("equipmentRecordId") Long equipmentRecordId,
+            @Param("equipmentCode") String equipmentCode,
+            @Param("maintenanceType") String maintenanceType,
+            @Param("activeStatuses") List<MaintenanceStatus> activeStatuses);
+
+    @Query("SELECT CASE WHEN COUNT(mt) > 0 THEN TRUE ELSE FALSE END FROM MaintenanceTask mt "
+            + "WHERE mt.deleted = FALSE "
+            + "AND mt.hospitalId = :hospitalId "
+            + "AND mt.equipmentRecord.id = :equipmentRecordId "
+            + "AND LOWER(TRIM(mt.maintenanceType)) = LOWER(TRIM(:maintenanceType)) "
+            + "AND mt.status IN :activeStatuses")
+    boolean existsActiveTaskForEquipment(
+            @Param("hospitalId") Long hospitalId,
+            @Param("equipmentRecordId") Long equipmentRecordId,
+            @Param("maintenanceType") String maintenanceType,
+            @Param("activeStatuses") List<MaintenanceStatus> activeStatuses);
+
+    // ---------------------------------------------------------------------
+    // Per-asset aggregates for failure-risk scoring (issue #946)
+    //
+    // mt.equipment_id holds the denormalised asset code, which is how the rest of this repository
+    // addresses a single asset. Every query joins equipment and repeats the hospital predicate on
+    // both sides, matching the tenant-scoping convention used throughout this interface.
+    // ---------------------------------------------------------------------
+
+    /** How many maintenance tasks for this asset are in the given status. */
+    @Query(value = "SELECT COUNT(*) FROM maintenance_tasks mt "
+            + "JOIN equipment e ON e.id = mt.equipment_record_id "
+            + "WHERE mt.deleted = FALSE AND mt.hospital_id = :hospitalId "
+            + "AND e.hospital_id = :hospitalId AND mt.equipment_id = :equipmentCode "
+            + "AND mt.status = :status",
+            nativeQuery = true)
+    long countByHospitalIdAndEquipmentCodeAndStatusNative(
+            @Param("hospitalId") Long hospitalId,
+            @Param("equipmentCode") String equipmentCode,
+            @Param("status") String status);
+
+    default long countByHospitalIdAndEquipmentCodeAndStatus(
+            Long hospitalId, String equipmentCode, MaintenanceStatus status) {
+        return countByHospitalIdAndEquipmentCodeAndStatusNative(
+                hospitalId, equipmentCode, status.name());
+    }
+
+    /**
+     * When this asset was last serviced, or {@code null} if it never has been.
+     *
+     * <p>Tasks completed without a timestamp are excluded rather than counted as "completed at an
+     * unknown time": a missing timestamp carries no recency signal, and reading it as one is what
+     * made the caller throw.</p>
+     */
+    @Query(value = "SELECT MAX(mt.completed_at) FROM maintenance_tasks mt "
+            + "JOIN equipment e ON e.id = mt.equipment_record_id "
+            + "WHERE mt.deleted = FALSE AND mt.hospital_id = :hospitalId "
+            + "AND e.hospital_id = :hospitalId AND mt.equipment_id = :equipmentCode "
+            + "AND mt.status = :status AND mt.completed_at IS NOT NULL",
+            nativeQuery = true)
+    LocalDateTime findLastCompletionForEquipmentNative(
+            @Param("hospitalId") Long hospitalId,
+            @Param("equipmentCode") String equipmentCode,
+            @Param("status") String status);
+
+    default Optional<LocalDateTime> findLastCompletionForEquipment(
+            Long hospitalId, String equipmentCode) {
+        return Optional.ofNullable(findLastCompletionForEquipmentNative(
+                hospitalId, equipmentCode, MaintenanceStatus.COMPLETED.name()));
+    }
+
+    /** Tasks for this asset whose deadline has passed and which are not yet completed. */
+    @Query(value = "SELECT COUNT(*) FROM maintenance_tasks mt "
+            + "JOIN equipment e ON e.id = mt.equipment_record_id "
+            + "WHERE mt.deleted = FALSE AND mt.hospital_id = :hospitalId "
+            + "AND e.hospital_id = :hospitalId AND mt.equipment_id = :equipmentCode "
+            + "AND mt.status <> :completedStatus "
+            + "AND mt.deadline IS NOT NULL AND mt.deadline < :asOf",
+            nativeQuery = true)
+    long countOverdueForEquipmentNative(
+            @Param("hospitalId") Long hospitalId,
+            @Param("equipmentCode") String equipmentCode,
+            @Param("completedStatus") String completedStatus,
+            @Param("asOf") LocalDate asOf);
+
+    default long countOverdueForEquipment(Long hospitalId, String equipmentCode, LocalDate asOf) {
+        return countOverdueForEquipmentNative(
+                hospitalId, equipmentCode, MaintenanceStatus.COMPLETED.name(), asOf);
+    }
 
     // Analytics aggregation queries
     @Query(value = "SELECT COUNT(*) FROM maintenance_tasks mt "
@@ -283,6 +430,17 @@ public interface MaintenanceTaskRepository extends JpaRepository<MaintenanceTask
             @Param("ruleId") Long ruleId,
             @Param("windowStart") LocalDate windowStart,
             @Param("windowEnd") LocalDate windowEnd);
+
+    @Query("SELECT task FROM MaintenanceTask task "
+            + "WHERE task.deadline >= :windowStart "
+            + "AND task.deadline <= :windowEnd "
+            + "AND task.assignedTechnicianRecord IS NOT NULL "
+            + "AND task.status <> com.medtrack.model.MaintenanceStatus.COMPLETED "
+            + "AND task.equipmentRecord.status NOT IN :decommissionedStatuses")
+    List<MaintenanceTask> findAlertableUpcomingTasks(
+            @Param("windowStart") LocalDate windowStart,
+            @Param("windowEnd") LocalDate windowEnd,
+            @Param("decommissionedStatuses") java.util.Collection<com.medtrack.model.EquipmentStatus> decommissionedStatuses);
 
     @Query("SELECT task FROM MaintenanceTask task "
             + "WHERE task.hospitalId = :hospitalId "
