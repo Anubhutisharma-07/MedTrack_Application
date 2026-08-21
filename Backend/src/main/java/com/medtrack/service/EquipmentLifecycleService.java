@@ -1,7 +1,6 @@
 package com.medtrack.service;
 
-import com.medtrack.auth.model.User;
-import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.auth.security.HospitalAccessGuard;
 import com.medtrack.dto.EquipmentDepreciationSummaryResponse;
 import com.medtrack.dto.EquipmentLifecycleActionRequest;
 import com.medtrack.dto.EquipmentLifecycleActionResponse;

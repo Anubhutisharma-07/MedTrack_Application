@@ -2,6 +2,7 @@ package com.medtrack.service;
 
 import com.medtrack.auth.model.User;
 import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.Equipment;
 import com.medtrack.model.EquipmentOrder;
 import com.medtrack.model.EquipmentStatus;
@@ -12,8 +13,8 @@ import com.medtrack.repository.EquipmentRepository;
 import com.medtrack.repository.HospitalRepository;
 import com.medtrack.supplier.security.SupplierAccessGuard;
 import com.medtrack.util.PurchaseOrderPdf;
-import com.medtrack.dto.PlaceOrderRequest;
-import com.medtrack.dto.SupplierMetricsDto;
+import com.medtrack.util.SupplierInvoicePdf;
+import com.medtrack.auth.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +23,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.medtrack.exception.ResourceNotFoundException;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,9 +33,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-
-import com.medtrack.util.SupplierInvoicePdf;
-import com.medtrack.auth.service.EmailService;
 
 @Service
 @RequiredArgsConstructor
@@ -51,6 +48,8 @@ public class OrderService {
     private final UserRepository userRepository;
     private final HospitalRepository hospitalRepository;
     private final SupplierAccessGuard supplierAccessGuard;
+
+    private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
 
     public byte[] generateInvoicePdf(Long id) {
         EquipmentOrder order = getOrderById(id);
@@ -175,7 +174,7 @@ public class OrderService {
     private User getCurrentHospitalUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new ResourceNotFoundException("User not authenticated");
         }
         String email = authentication.getName();
         return userRepository.findByEmail(email)
@@ -184,7 +183,7 @@ public class OrderService {
 
     private User getAuthenticatedUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new ResourceNotFoundException("User not authenticated");
         }
         return userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -217,7 +216,7 @@ public class OrderService {
     private String getCurrentUsername() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new RuntimeException("User not authenticated");
+            throw new ResourceNotFoundException("User not authenticated");
         }
         return authentication.getName();
     }

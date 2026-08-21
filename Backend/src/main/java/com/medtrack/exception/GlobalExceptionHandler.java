@@ -10,6 +10,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.access.AccessDeniedException;
@@ -60,36 +61,42 @@ public class GlobalExceptionHandler {
         return buildProblemDetail(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
     }
 
+    /** Duplicate email registration → 409 Conflict. */
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ResponseEntity<ProblemDetail> handleEmailAlreadyExists(
             EmailAlreadyExistsException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    /** Entity not found → 404 Not Found. */
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ProblemDetail> handleResourceNotFound(
             ResourceNotFoundException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.NOT_FOUND, ex.getMessage(), request);
     }
 
+    /** Invalid state transition → 400 Bad Request. */
     @ExceptionHandler(InvalidStatusTransitionException.class)
     public ResponseEntity<ProblemDetail> handleInvalidStatusTransition(
             InvalidStatusTransitionException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
+    /** Authorization denial → 403 Forbidden. */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ProblemDetail> handleAccessDenied(
             AccessDeniedException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.FORBIDDEN, "Access denied", request);
     }
 
+    /** Duplicate tracking number → 409 Conflict. */
     @ExceptionHandler(DuplicateTrackingNumberException.class)
     public ResponseEntity<ProblemDetail> handleDuplicateTrackingNumber(
             DuplicateTrackingNumberException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    /** Business logic violations → 400 Bad Request. */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ProblemDetail> handleIllegalArgument(
             IllegalArgumentException ex, HttpServletRequest request) {
@@ -159,6 +166,7 @@ public class GlobalExceptionHandler {
         return buildProblemDetail(HttpStatus.CONFLICT, "The request conflicts with the current resource state", request);
     }
 
+    /** Unhandled runtime errors → 500 Internal Server Error. */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ProblemDetail> handleRuntimeException(
             RuntimeException ex, HttpServletRequest request) {
@@ -166,6 +174,7 @@ public class GlobalExceptionHandler {
         return buildProblemDetail(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR_MESSAGE, request);
     }
 
+    /** Catch-all for checked exceptions → 500 Internal Server Error. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ProblemDetail> handleGeneralException(
             Exception ex, HttpServletRequest request) {

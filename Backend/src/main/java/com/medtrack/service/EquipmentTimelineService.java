@@ -1,7 +1,6 @@
 package com.medtrack.service;
 
-import com.medtrack.auth.model.User;
-import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.auth.security.HospitalAccessGuard;
 import com.medtrack.dto.EquipmentTimelineEntry;
 import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.Equipment;
@@ -40,7 +39,7 @@ public class EquipmentTimelineService {
 
     private final EquipmentRepository equipmentRepository;
     private final HospitalRepository hospitalRepository;
-    private final UserRepository userRepository;
+    private final HospitalAccessGuard hospitalAccessGuard;
     private final EquipmentLifecycleActionRepository lifecycleActionRepository;
     private final MaintenanceTaskRepository maintenanceTaskRepository;
     private final OperationsEventRepository operationsEventRepository;

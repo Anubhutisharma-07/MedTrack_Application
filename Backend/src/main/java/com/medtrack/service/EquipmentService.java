@@ -1,7 +1,6 @@
 package com.medtrack.service;
 
-import com.medtrack.auth.model.User;
-import com.medtrack.auth.repository.UserRepository;
+import com.medtrack.auth.security.HospitalAccessGuard;
 import com.medtrack.dto.EquipmentDashboardResponse;
 import com.medtrack.dto.EquipmentImportPreviewResponse;
 import com.medtrack.dto.EquipmentImportSummary;
@@ -57,7 +56,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -70,10 +68,15 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -89,7 +92,7 @@ public class EquipmentService {
 
     private final EquipmentRepository equipmentRepository;
     private final HospitalRepository hospitalRepository;
-    private final UserRepository userRepository;
+    private final HospitalAccessGuard hospitalAccessGuard;
     private final EquipmentImportAuditLogRepository equipmentImportAuditLogRepository;
     private final FacilityLocationRepository facilityLocationRepository;
     private final EventPublisherService eventPublisherService;
