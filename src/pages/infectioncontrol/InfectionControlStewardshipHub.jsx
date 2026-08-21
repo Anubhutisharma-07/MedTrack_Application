@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, AlertTriangle, Beaker, Bed, Calendar, CheckCircle2, Clock,
-  Droplets, Eye, FileText, Filter, FlaskConical, Gauge, Heart,
-  HeartPulse, Hospital, Layers, MapPin, Microscope, Pause, Play,
-  Pill, PlayCircle, Plus, RefreshCw, Search, Shield, ShieldCheck,
-  ShieldAlert, Stethoscope, Syringe, Thermometer, Timer, TrendingDown,
-  TrendingUp, User, Users, Zap, ChevronRight, X, Bug, ThermometerSnowflake,
-  Scan, Target, AlertOctagon, FlaskRound, BadgeAlert, Siren,
+  Activity, AlertTriangle, Bug, Calendar, CheckCircle2, Clock, Droplets,
+  FileText, Filter, FlaskConical, Gauge, Hand, Pause, Play, RefreshCw,
+  Search, Shield, ShieldCheck, Siren, Stethoscope, Syringe, TrendingDown,
+  TrendingUp, User, Users, Pill, AlertOctagon,
 } from "lucide-react";
 import { ExportCsvButton } from "../../components/common/ExportButton";
 import { downloadCsv } from "../../utils/csv";
@@ -21,789 +18,505 @@ import { SimpleModal as Modal } from "../../components/common/Modal";
 import ToastTray, { useToastTray } from "../../components/common/ToastTray";
 import { PageHeader, Footer } from "../../components/common/PageHeader";
 
-/* ------------------------------------------------------------------ *
- *  MedTrack Infection Control & Antimicrobial Stewardship Hub
- *  ------------------------------------------------------------------
- *  Five consoles for hospital infection prevention:
- *    1. HAIs Dashboard     – hospital-acquired infection surveillance
- *                           (CAUTI, CLABSI, SSI, C. diff, MRSA).
- *    2. Antibiotic Rx      – antimicrobial stewardship: utilization,
- *                           spectrum index, restricted agents.
- *    3. Hand Hygiene       – compliance monitoring by department,
- *                           missed opportunities, nudges.
- *    4. Isolation & PPE    – room status, precaution level, PPE
- *                           stock and compliance.
- *    5. Outbreak Watch     – cluster detection, epi curves, risk
- *                           heat-map by ward.
- * ------------------------------------------------------------------ */
+/* ── Seed data ── */
 
-/* ------------------------------------------------------------------ *
- *  Seed data
- * ------------------------------------------------------------------ */
-
-const HAI_RECORDS = [
-  { id: "HAI-001", type: "CAUTI", patient: "Robert Kim", age: 72, unit: "ICU West", organism: "E. coli", resistance: "ESBL+", device: "Foley catheter", daysDevice: 14, onsetDay: 12, severity: "High", reportedBy: "Dr. Patel", status: "Active" },
-  { id: "HAI-002", type: "CLABSI", patient: "Maria Santos", age: 58, unit: "Oncology", organism: "S. aureus", resistance: "MRSA", device: "Central line", daysDevice: 21, onsetDay: 18, severity: "Critical", reportedBy: "Dr. Kim", status: "Active" },
-  { id: "HAI-003", type: "SSI", patient: "James O'Brien", age: 64, unit: "Surgical", organism: "K. pneumoniae", resistance: "CRE", device: "N/A (surgical)", daysDevice: 0, onsetDay: 5, severity: "High", reportedBy: "Dr. Lee", status: "Under Review" },
-  { id: "HAI-004", type: "C. diff", patient: "Linda Chen", age: 45, unit: "Med-Surg", organism: "C. difficile", resistance: "N/A", device: "N/A", daysDevice: 0, onsetDay: 8, severity: "Moderate", reportedBy: "NP Garcia", status: "Active" },
-  { id: "HAI-005", type: "MRSA", patient: "William Davis", age: 81, unit: "Rehab", organism: "S. aureus", resistance: "MRSA", device: "Wound VAC", daysDevice: 7, onsetDay: 10, severity: "Moderate", reportedBy: "Dr. Patel", status: "Resolved" },
-  { id: "HAI-006", type: "CAUTI", patient: "Angela Park", age: 67, unit: "ICU East", organism: "P. aeruginosa", resistance: "MDR", device: "Foley catheter", daysDevice: 11, onsetDay: 9, severity: "Critical", reportedBy: "Dr. Kim", status: "Active" },
-  { id: "HAI-007", type: "VAP", patient: "Thomas Brown", age: 55, unit: "ICU West", organism: "A. baumannii", resistance: "XDR", device: "Endotracheal tube", daysDevice: 16, onsetDay: 13, severity: "Critical", reportedBy: "Dr. Lee", status: "Active" },
-  { id: "HAI-008", type: "CLABSI", patient: "Dorothy Wilson", age: 70, unit: "Cardiology", organism: "Candida albicans", resistance: "N/A", device: "PICC line", daysDevice: 9, onsetDay: 7, severity: "Moderate", reportedBy: "Dr. Patel", status: "Under Review" },
+const HAI_SURVEILLANCE = [
+  { id: "HAI-001", patient: "Eleanor Vance", age: 74, unit: "ICU-3A", infection: "CAUTI", organism: "E. coli", onsetDay: 5, site: "Urinary Catheter", wbc: 14200, temp: 38.9, cultures: "Positive", sensitivity: "ESBL \u2014 Resistant", antibiotics: ["Meropenem"], isolation: false, resolved: false, riskLevel: "High", lastCulture: "4h ago", nurse: "RN Torres", reportedBy: "Lab Auto-Flag" },
+  { id: "HAI-002", patient: "Marcus Chen", age: 62, unit: "MICU-07", infection: "CLABSI", organism: "S. aureus (MRSA)", onsetDay: 3, site: "Central Line \u2014 RIJ", wbc: 18500, temp: 39.4, cultures: "Positive x2", sensitivity: "MRSA \u2014 Vanco Sensitive", antibiotics: ["Vancomycin"], isolation: true, resolved: false, riskLevel: "Critical", lastCulture: "2h ago", nurse: "RN Patel", reportedBy: "Blood Culture Flag" },
+  { id: "HAI-003", patient: "Diane Foster", age: 58, unit: "SICU-02", infection: "SSI", organism: "K. pneumoniae", onsetDay: 7, site: "Abdominal Incision", wbc: 11800, temp: 38.2, cultures: "Pending", sensitivity: "Pending", antibiotics: ["Cefepime"], isolation: false, resolved: false, riskLevel: "Moderate", lastCulture: "1h ago", nurse: "RN Kim", reportedBy: "Surgical Team" },
+  { id: "HAI-004", patient: "Robert Okafor", age: 81, unit: "Med-Surg 4W", infection: "VAP", organism: "P. aeruginosa", onsetDay: 10, site: "Endotracheal Tube", wbc: 16200, temp: 39.1, cultures: "Positive", sensitivity: "Multidrug Resistant", antibiotics: ["Tobramycin", "Pip-Tazo"], isolation: true, resolved: false, riskLevel: "Critical", lastCulture: "3h ago", nurse: "RN Davis", reportedBy: "Ventilator Protocol" },
+  { id: "HAI-005", patient: "Sandra Lim", age: 45, unit: "Onc-2", infection: "CDI", organism: "C. difficile", onsetDay: 2, site: "Gastrointestinal", wbc: 9800, temp: 37.8, cultures: "Toxin A/B Positive", sensitivity: "N/A", antibiotics: ["Vancomycin PO"], isolation: true, resolved: false, riskLevel: "Moderate", lastCulture: "6h ago", nurse: "RN Garcia", reportedBy: "Diarrhea Alert" },
+  { id: "HAI-006", patient: "Thomas Wright", age: 69, unit: "Cardio-1", infection: "CAUTI", organism: "Enterococcus (VRE)", onsetDay: 8, site: "Urinary Catheter", wbc: 12400, temp: 38.5, cultures: "Positive", sensitivity: "VRE \u2014 Linezolid Sensitive", antibiotics: ["Linezolid"], isolation: true, resolved: true, riskLevel: "Low", lastCulture: "2d ago", nurse: "RN Johnson", reportedBy: "Catheter Audit" },
+  { id: "HAI-007", patient: "Angela Rossi", age: 77, unit: "ICU-1B", infection: "CLABSI", organism: "Candida albicans", onsetDay: 6, site: "Central Line \u2014 PICC", wbc: 15600, temp: 38.7, cultures: "Positive", sensitivity: "Fluconazole Sensitive", antibiotics: ["Fluconazole"], isolation: false, resolved: false, riskLevel: "High", lastCulture: "5h ago", nurse: "RN Ahmed", reportedBy: "Blood Culture Flag" },
+  { id: "HAI-008", patient: "James Park", age: 55, unit: "Neuro-ICU", infection: "VAP", organism: "A. baumannii", onsetDay: 12, site: "Endotracheal Tube", wbc: 20100, temp: 40.1, cultures: "Positive x3", sensitivity: "Pan-Resistant", antibiotics: ["Colistin"], isolation: true, resolved: false, riskLevel: "Critical", lastCulture: "30m ago", nurse: "RN Nakamura", reportedBy: "Ventilator Protocol" },
 ];
 
-const ANTIBIOTIC_RECORDS = [
-  { id: "AB-001", drug: "Meropenem", category: "Carbapenem", patient: "Robert Kim", unit: "ICU West", dose: "1g IV q8h", dot: 14, indication: "ESBL E. coli CAUTI", restricted: true, deEscalated: false, spectrum: "Broad", startDay: "2026-07-28", prescriber: "Dr. Patel" },
-  { id: "AB-002", drug: "Vancomycin", category: "Glycopeptide", patient: "Maria Santos", unit: "Oncology", dose: "15mg/kg IV q12h", dot: 18, indication: "MRSA CLABSI", restricted: true, deEscalated: false, spectrum: "Narrow", startDay: "2026-07-22", prescriber: "Dr. Kim" },
-  { id: "AB-003", drug: "Ceftriaxone", category: "Cephalosporin", patient: "James O'Brien", unit: "Surgical", dose: "2g IV q24h", dot: 5, indication: "SSI prophylaxis → therapeutic", restricted: false, deEscalated: true, spectrum: "Broad", startDay: "2026-08-05", prescriber: "Dr. Lee" },
-  { id: "AB-004", drug: "Metronidazole", category: "Nitroimidazole", patient: "Linda Chen", unit: "Med-Surg", dose: "500mg PO q8h", dot: 8, indication: "C. difficile infection", restricted: false, deEscalated: false, spectrum: "Narrow", startDay: "2026-08-02", prescriber: "NP Garcia" },
-  { id: "AB-005", drug: "Colistin", category: "Polymyxin", patient: "Angela Park", unit: "ICU East", dose: "MU IV q12h", dot: 11, indication: "MDR Pseudomonas CAUTI", restricted: true, deEscalated: false, spectrum: "Last-resort", startDay: "2026-07-29", prescriber: "Dr. Patel" },
-  { id: "AB-006", drug: "Linezolid", category: "Oxazolidinone", patient: "Thomas Brown", unit: "ICU West", dose: "600mg IV q12h", dot: 13, indication: "XDR Acinetobacter VAP", restricted: true, deEscalated: false, spectrum: "Broad", startDay: "2026-07-27", prescriber: "Dr. Kim" },
-  { id: "AB-007", drug: "Amoxicillin-Clav", category: "Penicillin", patient: "Dorothy Wilson", unit: "Cardiology", dose: "875mg PO q12h", dot: 7, indication: "Empiric → candida identified", restricted: false, deEscalated: true, spectrum: "Narrow", startDay: "2026-08-03", prescriber: "Dr. Patel" },
-  { id: "AB-008", drug: "Piperacillin-Taz", category: "Penicillin", patient: "William Davis", unit: "Rehab", dose: "4.5g IV q8h", dot: 10, indication: "Empiric MRSA coverage", restricted: false, deEscalated: true, spectrum: "Broad", startDay: "2026-07-30", prescriber: "Dr. Lee" },
+const STEWARDSHIP_DRUGS = [
+  { id: "ABX-001", drug: "Meropenem", drugClass: "Carbapenem", indication: "ESBL E. coli UTI", ddd: 3.0, unitsDispensed: 42, costPerDay: 185.00, spectrum: "Broad", restricted: true, formulary: "Restricted", interventions: 2, deEscalated: false, dot: 14, alerts: ["Auto-stop in 2 days", "ID consult recommended"], pharm: "Pharm Liu" },
+  { id: "ABX-002", drug: "Vancomycin", drugClass: "Glycopeptide", indication: "MRSA CLABSI", ddd: 2.0, unitsDispensed: 56, costPerDay: 42.00, spectrum: "Narrow-GP", restricted: false, formulary: "Open", interventions: 1, deEscalated: false, dot: 14, alerts: ["TDM due"], pharm: "Pharm Liu" },
+  { id: "ABX-003", drug: "Cefepime", drugClass: "4th-Gen Cephalosporin", indication: "SSI Prophylaxis", ddd: 2.0, unitsDispensed: 30, costPerDay: 28.00, spectrum: "Broad", restricted: false, formulary: "Open", interventions: 0, deEscalated: true, dot: 7, alerts: ["De-escalation target"], pharm: "Pharm Patel" },
+  { id: "ABX-004", drug: "Linezolid", drugClass: "Oxazolidinone", indication: "VRE Bacteremia", ddd: 2.0, unitsDispensed: 18, costPerDay: 320.00, spectrum: "Gram Positive", restricted: true, formulary: "Restricted", interventions: 1, deEscalated: false, dot: 9, alerts: ["Platelet monitoring"], pharm: "Pharm Liu" },
+  { id: "ABX-005", drug: "Colistin", drugClass: "Polymyxin", indication: "Pan-Resistant A. baumannii", ddd: 9.0, unitsDispensed: 12, costPerDay: 450.00, spectrum: "Last-Resort", restricted: true, formulary: "Restricted \u2014 ID Only", interventions: 3, deEscalated: false, dot: 5, alerts: ["Nephrotoxicity Risk", "ID mandatory", "Renal adjust"], pharm: "Pharm Liu" },
+  { id: "ABX-006", drug: "Piperacillin-Tazobactam", drugClass: "Beta-Lactam + Inhibitor", indication: "Pseudomonas VAP", ddd: 4.0, unitsDispensed: 48, costPerDay: 55.00, spectrum: "Broad", restricted: false, formulary: "Open", interventions: 1, deEscalated: true, dot: 10, alerts: ["Reassess combo"], pharm: "Pharm Patel" },
 ];
 
-const HAND_HYGIENE = [
-  { id: "HH-001", department: "ICU West", opportunities: 1240, performed: 1178, rate: 95, observer: "Nurse Chen", lastAudit: "2026-08-18", trend: "up" },
-  { id: "HH-002", department: "ICU East", opportunities: 980, performed: 912, rate: 93, observer: "Nurse Kim", lastAudit: "2026-08-17", trend: "stable" },
-  { id: "HH-003", department: "Emergency", opportunities: 2100, performed: 1785, rate: 85, observer: "Dr. Garcia", lastAudit: "2026-08-18", trend: "down" },
-  { id: "HH-004", department: "Oncology", opportunities: 860, performed: 817, rate: 95, observer: "Nurse Lee", lastAudit: "2026-08-16", trend: "up" },
-  { id: "HH-005", department: "Surgical", opportunities: 1580, performed: 1469, rate: 93, observer: "Nurse Patel", lastAudit: "2026-08-18", trend: "stable" },
-  { id: "HH-006", department: "Med-Surg", opportunities: 1850, performed: 1573, rate: 85, observer: "NP Wilson", lastAudit: "2026-08-15", trend: "down" },
-  { id: "HH-007", department: "Oncology", opportunities: 720, performed: 705, rate: 98, observer: "Nurse Kim", lastAudit: "2026-08-18", trend: "up" },
-  { id: "HH-008", department: "Pediatrics", opportunities: 1100, performed: 1023, rate: 93, observer: "Nurse Davis", lastAudit: "2026-08-17", trend: "stable" },
+const HAND_HYGIENE_OBS = [
+  { id: "HH-001", unit: "ICU Block", period: "Aug W3", beforePt: 92, afterPt: 88, beforeAseptic: 95, afterBF: 97, afterContact: 85, totalOpp: 420, compliant: 386, rate: 91.9, hw: 280, sanit: 106, auditors: 4, target: 90, status: "Passing", trend: "Improving", notes: "ICU consistently above target" },
+  { id: "HH-002", unit: "Med-Surg 4W", period: "Aug W3", beforePt: 78, afterPt: 72, beforeAseptic: 85, afterBF: 90, afterContact: 70, totalOpp: 350, compliant: 274, rate: 78.3, hw: 180, sanit: 94, auditors: 3, target: 90, status: "Failing", trend: "Declining", notes: "After-contact compliance critically low" },
+  { id: "HH-003", unit: "SICU", period: "Aug W3", beforePt: 88, afterPt: 84, beforeAseptic: 92, afterBF: 94, afterContact: 80, totalOpp: 280, compliant: 240, rate: 85.7, hw: 165, sanit: 75, auditors: 3, target: 90, status: "Borderline", trend: "Stable", notes: "Needs improvement in after-contact" },
+  { id: "HH-004", unit: "Oncology-2", period: "Aug W3", beforePt: 96, afterPt: 94, beforeAseptic: 98, afterBF: 99, afterContact: 92, totalOpp: 200, compliant: 191, rate: 95.5, hw: 140, sanit: 51, auditors: 2, target: 90, status: "Excellent", trend: "Improving", notes: "Best compliance in hospital" },
+  { id: "HH-005", unit: "ED", period: "Aug W3", beforePt: 68, afterPt: 62, beforeAseptic: 75, afterBF: 82, afterContact: 58, totalOpp: 500, compliant: 326, rate: 65.2, hw: 200, sanit: 126, auditors: 5, target: 90, status: "Failing", trend: "Declining", notes: "Urgent intervention needed" },
+  { id: "HH-006", unit: "NICU", period: "Aug W3", beforePt: 98, afterPt: 97, beforeAseptic: 99, afterBF: 100, afterContact: 96, totalOpp: 160, compliant: 157, rate: 98.1, hw: 120, sanit: 37, auditors: 2, target: 95, status: "Excellent", trend: "Stable", notes: "Exceeds neonatal target" },
 ];
 
-const ISOLATION_ROOMS = [
-  { id: "IR-001", room: "412-A", unit: "ICU West", patient: "Robert Kim", precaution: "Contact", organism: "ESBL E. coli", ppeCompliance: 92, daysIsolation: 5, staffBriefed: 18, visitorsRestricted: true, status: "Active" },
-  { id: "IR-002", room: "308-B", unit: "Oncology", patient: "Maria Santos", precaution: "Contact + Droplet", organism: "MRSA", ppeCompliance: 88, daysIsolation: 8, staffBriefed: 22, visitorsRestricted: true, status: "Active" },
-  { id: "IR-003", room: "201-A", unit: "Surgical", patient: "James O'Brien", precaution: "Contact", organism: "CRE Klebsiella", ppeCompliance: 95, daysIsolation: 3, staffBriefed: 12, visitorsRestricted: false, status: "Active" },
-  { id: "IR-004", room: "515-C", unit: "ICU East", patient: "Angela Park", precaution: "Droplet", organism: "MDR Pseudomonas", ppeCompliance: 90, daysIsolation: 6, staffBriefed: 15, visitorsRestricted: true, status: "Active" },
-  { id: "IR-005", room: "110-A", unit: "Rehab", patient: "William Davis", precaution: "Contact", organism: "MRSA", ppeCompliance: 97, daysIsolation: 2, staffBriefed: 8, visitorsRestricted: false, status: "DC Pending" },
-  { id: "IR-006", room: "602-B", unit: "ICU West", patient: "Thomas Brown", precaution: "Airborne", organism: "XDR Acinetobacter", ppeCompliance: 85, daysIsolation: 7, staffBriefed: 20, visitorsRestricted: true, status: "Active" },
+const OUTBREAK_EVENTS = [
+  { id: "OB-001", pathogen: "S. aureus (MRSA)", type: "Bacterial", units: ["ICU-3A", "ICU-1B", "MICU-07"], cases: 6, source: "HCW Carrier Pending", firstCase: "2026-08-10", lastCase: "2026-08-19", r0: 1.8, status: "Active", phase: "Containment", traced: 42, isolated: 12, prophylaxis: "Mupirocin Decolonization", envClean: "Enhanced Q8H", risk: "High", escalate: 2, lead: "Dr. Nakamura", phNotif: false, update: "2h ago" },
+  { id: "OB-002", pathogen: "C. difficile", type: "Bacterial", units: ["Med-Surg 4W", "Cardio-1"], cases: 4, source: "Shared Bathroom", firstCase: "2026-08-12", lastCase: "2026-08-18", r0: 1.2, status: "Active", phase: "Investigation", traced: 18, isolated: 6, prophylaxis: "Fidaxomicin", envClean: "Bleach Q4H", risk: "Moderate", escalate: 1, lead: "Dr. Park", phNotif: false, update: "4h ago" },
+  { id: "OB-003", pathogen: "Candida auris", type: "Fungal", units: ["ICU-1B", "ICU-3A"], cases: 3, source: "Colonized Admission", firstCase: "2026-08-08", lastCase: "2026-08-16", r0: 1.5, status: "Contained", phase: "Surveillance", traced: 28, isolated: 8, prophylaxis: "CHG Bathing", envClean: "UV-C + Chemical Q6H", risk: "Critical", escalate: 3, lead: "Dr. Nakamura", phNotif: true, update: "1d ago" },
+  { id: "OB-004", pathogen: "RSV", type: "Viral", units: ["PICU", "Ped-2"], cases: 11, source: "Community Surge", firstCase: "2026-08-05", lastCase: "2026-08-20", r0: 2.4, status: "Active", phase: "Surge Mgmt", traced: 55, isolated: 15, prophylaxis: "Palivizumab", envClean: "Air Filtration", risk: "High", escalate: 2, lead: "Dr. Park", phNotif: true, update: "1h ago" },
 ];
 
-const OUTBREAK_CLUSTERS = [
-  { id: "OB-001", organism: "CRE Klebsiella pneumoniae", type: "CRE", cases: 4, unit: "ICU West", firstSeen: "2026-08-10", lastSeen: "2026-08-18", risk: "High", status: "Investigating", source: "Possible sink drain reservoir", actions: ["Environmental cultures sent", "Enhanced terminal cleaning", "Contact precautions for all ICU West"] },
-  { id: "OB-002", organism: "Candida auris", type: "Candida", cases: 2, unit: "ICU East", firstSeen: "2026-08-15", lastSeen: "2026-08-17", risk: "Critical", status: "Active", source: "Screening of roommates", actions: ["Pre-emptive contact for all ICU East", "Chlorhexidine bathing protocol", "Environmental decontamination"] },
-  { id: "OB-003", organism: "Norovirus", type: "Viral", cases: 8, unit: "Med-Surg", firstSeen: "2026-08-12", lastSeen: "2026-08-19", risk: "Moderate", status: "Declining", source: "Staff & visitor transmission", actions: ["Cohorting of cases", "Enhanced hand hygiene", "Visitor restrictions on 3 North"] },
-  { id: "OB-004", organism: "MRSA (LA-MRSA)", type: "MRSA", cases: 3, unit: "Rehab", firstSeen: "2026-08-14", lastSeen: "2026-08-18", risk: "Moderate", status: "Investigating", source: "Gym equipment sharing?", actions: ["Decolonization protocol", "Equipment audit", "Active surveillance cultures"] },
-  { id: "OB-005", organism: "Pseudomonas aeruginosa (MDR)", type: "MDR-GNR", cases: 2, unit: "ICU East", firstSeen: "2026-08-16", lastSeen: "2026-08-18", risk: "High", status: "Active", source: "Ventilator circuit?", actions: ["Ventilator circuit audit", "Respiratory therapy review", "Water system sampling"] },
+const ENV_AUDITS = [
+  { id: "ENV-001", area: "ICU-3A", auditor: "EVS Tech Brown", date: "2026-08-20", method: "ATP Bioluminescence", atp: 142, threshold: 200, status: "Pass", highTouch: 94, terminal: "Passed", bleach: "1000ppm", uv: true, sinceClean: "2h", notes: "Bed rails re-cleaned" },
+  { id: "ENV-002", area: "Med-Surg 4W Bath", auditor: "EVS Tech Garcia", date: "2026-08-20", method: "Visual + ATP", atp: 380, threshold: 200, status: "Fail", highTouch: 62, terminal: "Failed \u2014 Retry", bleach: "1000ppm", uv: false, sinceClean: "6h", notes: "Soap dispenser, floor drain" },
+  { id: "ENV-003", area: "SICU", auditor: "EVS Tech Nguyen", date: "2026-08-20", method: "ATP Bioluminescence", atp: 88, threshold: 200, status: "Pass", highTouch: 98, terminal: "Passed", bleach: "1000ppm", uv: true, sinceClean: "1h", notes: "Exemplary \u2014 model unit" },
+  { id: "ENV-004", area: "ED Triage", auditor: "EVS Tech Brown", date: "2026-08-20", method: "Visual + ATP", atp: 265, threshold: 200, status: "Fail", highTouch: 55, terminal: "Scheduled", bleach: "500ppm", uv: false, sinceClean: "8h", notes: "High turnover \u2014 scheduling Q2H" },
+  { id: "ENV-005", area: "Oncology-2", auditor: "EVS Tech Martinez", date: "2026-08-20", method: "ATP Bioluminescence", atp: 65, threshold: 200, status: "Pass", highTouch: 99, terminal: "Passed", bleach: "1000ppm", uv: true, sinceClean: "30m", notes: "Immunocompromised protocol" },
+  { id: "ENV-006", area: "NICU", auditor: "EVS Tech Martinez", date: "2026-08-20", method: "ATP + Culture", atp: 45, threshold: 150, status: "Pass", highTouch: 100, terminal: "Passed", bleach: "1000ppm", uv: true, sinceClean: "45m", notes: "NICU stringent threshold met" },
 ];
 
-const HAI_TYPE_META = {
-  CAUTI: { icon: Droplets, color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
-  CLABSI: { icon: Syringe, color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
-  SSI: { icon: Syringe, color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-  "C. diff": { icon: Bug, color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
-  MRSA: { icon: ShieldAlert, color: "text-red-400 bg-red-500/10 border-red-500/20" },
-  VAP: { icon: ThermometerSnowflake, color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" },
-};
+/* ── Simulation helpers ── */
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function jitter(base, pct) { return base * (1 + (Math.random() - 0.5) * 2 * pct); }
+function simHai(p) { return { ...p, wbc: Math.round(clamp(jitter(p.wbc, 0.03), 4000, 25000)), temp: parseFloat(clamp(jitter(p.temp, 0.008), 36, 41).toFixed(1)) }; }
+function simHygiene(h) { return { ...h, rate: parseFloat(clamp(jitter(h.rate, 0.02), 50, 100).toFixed(1)) }; }
+function simOutbreak(o) { return { ...o, r0: parseFloat(clamp(jitter(o.r0, 0.05), 0.5, 4).toFixed(1)), traced: Math.round(clamp(jitter(o.traced, 0.03), 5, 100)) }; }
 
-const TABS = [
-  { key: "hais", label: "HAIs Dashboard", icon: Bug, blurb: "Hospital-acquired infection surveillance & rates" },
-  { key: "abx", label: "Antibiotic Rx", icon: Pill, blurb: "Antimicrobial stewardship & utilization tracking" },
-  { key: "hygiene", label: "Hand Hygiene", icon: Droplets, blurb: "Compliance monitoring & missed opportunities" },
-  { key: "isolation", label: "Isolation & PPE", icon: Shield, blurb: "Room status, precautions & PPE compliance" },
-  { key: "outbreak", label: "Outbreak Watch", icon: AlertOctagon, blurb: "Cluster detection & epidemiological tracking" },
-];
-
-/* ------------------------------------------------------------------ *
- *  Helpers
- * ------------------------------------------------------------------ */
-
-function severityTone(s) {
-  if (s === "Critical") return "red";
-  if (s === "High") return "amber";
-  if (s === "Moderate") return "yellow";
-  return "green";
-}
-
-function riskTone(r) {
-  if (r === "Critical") return "red";
-  if (r === "High") return "amber";
-  if (r === "Moderate") return "yellow";
-  return "green";
-}
-
-function precautionColor(p) {
-  if (p === "Airborne") return "text-red-400 border-red-500/30 bg-red-500/10";
-  if (p.includes("Contact + Droplet")) return "text-amber-400 border-amber-500/30 bg-amber-500/10";
-  if (p === "Contact") return "text-sky-400 border-sky-500/30 bg-sky-500/10";
-  if (p === "Droplet") return "text-violet-400 border-violet-500/30 bg-violet-500/10";
-  return "text-slate-400 border-slate-500/30 bg-slate-500/10";
-}
-
-function complianceBar(rate) {
-  if (rate >= 95) return "bg-emerald-500";
-  if (rate >= 90) return "bg-sky-500";
-  if (rate >= 85) return "bg-amber-500";
-  return "bg-rose-500";
-}
-
-/* ------------------------------------------------------------------ *
- *  Tab 1 – HAIs Dashboard
- * ------------------------------------------------------------------ */
-
-function HaiDashboardTab({ data, toasts }) {
+/* ── Tab: HAI Surveillance ── */
+function HaiSurveillanceTab({ toasts }) {
+  const [data, setData] = useState(HAI_SURVEILLANCE);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [sim, setSim] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const [modal, setModal] = useState(null);
-  const filters = ["All", "CAUTI", "CLABSI", "SSI", "C. diff", "MRSA", "VAP"];
+  const ref = useRef(null);
+  const filters = ["All", "Critical", "High", "Moderate", "Low", "Resolved"];
 
-  const filtered = useMemo(
-    () =>
-      data.filter((h) => {
-        const s =
-          !search ||
-          h.patient.toLowerCase().includes(search.toLowerCase()) ||
-          h.organism.toLowerCase().includes(search.toLowerCase()) ||
-          h.unit.toLowerCase().includes(search.toLowerCase()) ||
-          h.id.toLowerCase().includes(search.toLowerCase());
-        const f = filter === "All" ? true : h.type === filter;
-        return s && f;
-      }),
-    [data, search, filter]
-  );
+  const filtered = useMemo(() => data.filter((p) => {
+    const s = !search || p.patient.toLowerCase().includes(search.toLowerCase()) || p.infection.toLowerCase().includes(search.toLowerCase()) || p.organism.toLowerCase().includes(search.toLowerCase());
+    const f = filter === "All" ? true : filter === "Resolved" ? p.resolved : p.riskLevel === filter;
+    return s && f;
+  }), [data, search, filter]);
+
+  useEffect(() => {
+    if (sim) ref.current = setInterval(() => setData((d) => d.map(simHai)), 2000 / speed);
+    return () => clearInterval(ref.current);
+  }, [sim, speed]);
 
   const onExport = useCallback(() => {
-    downloadCsv(
-      "hai-surveillance.csv",
-      filtered.map((h) => ({
-        ID: h.id, Type: h.type, Patient: h.patient, Unit: h.unit,
-        Organism: h.organism, Resistance: h.resistance, Device: h.device,
-        DaysDevice: h.daysDevice, Severity: h.severity, Status: h.status,
-      }))
-    );
-    toasts.toast("HAIs data exported", "Low");
+    downloadCsv("hai-surveillance.csv", filtered.map((p) => ({ ID: p.id, Patient: p.patient, Age: p.age, Unit: p.unit, Infection: p.infection, Organism: p.organism, Onset: p.onsetDay, Site: p.site, WBC: p.wbc, Temp: p.temp, Cultures: p.cultures, Risk: p.riskLevel, Isolation: p.isolation ? "Yes" : "No", Abx: p.antibiotics.join("; "), Resolved: p.resolved ? "Yes" : "No" })));
+    toasts.add({ tone: "success", text: "HAI data exported" });
   }, [filtered, toasts]);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <CompactSearch value={search} onChange={setSearch} placeholder="Search patient, organism, unit..." />
+        <CompactSearch value={search} onChange={setSearch} placeholder="Search patient, infection, organism..." />
         <FilterChips options={filters} value={filter} onChange={setFilter} />
-        <div className="ml-auto"><ExportCsvButton onClick={onExport} /></div>
+        <div className="ml-auto flex items-center gap-2">
+          <ExportCsvButton onClick={onExport} />
+          <button onClick={() => setSim((s) => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${sim ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"}`}>
+            {sim ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />} {sim ? "Pause" : "Simulate"}
+          </button>
+          {sim && <div className="flex items-center gap-1 bg-slate-800 rounded-lg border border-slate-700 px-1">
+            {[1, 2, 4].map((s) => <button key={s} onClick={() => setSpeed(s)} className={`px-2 py-1 text-xs rounded-md font-medium transition ${speed === s ? "bg-cyan-500/20 text-cyan-400" : "text-slate-400 hover:text-slate-200"}`}>{s}x</button>)}
+          </div>}
+          {sim && <button onClick={() => setData(HAI_SURVEILLANCE)} className="flex items-center gap-1 px-2 py-1.5 text-xs text-slate-400 hover:text-slate-200"><RefreshCw className="w-3 h-3" /> Reset</button>}
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtered.map((h) => {
-          const meta = HAI_TYPE_META[h.type] || HAI_TYPE_META["CAUTI"];
-          const Icon = meta.icon;
-          return (
-            <div
-              key={h.id}
-              onClick={() => setModal(h)}
-              className={`bg-slate-900 border rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group ${
-                h.severity === "Critical" ? "border-rose-500/30" : "border-slate-800"
-              }`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`rounded-lg border p-2 ${meta.color}`}><Icon size={16} /></div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-100 group-hover:text-cyan-400 transition">{h.patient}</p>
-                    <p className="text-xs text-slate-500">{h.id} · {h.unit}</p>
-                  </div>
-                </div>
-                <ToneBadge tone={severityTone(h.severity)}>{h.severity}</ToneBadge>
-              </div>
-              <div className="bg-slate-950/50 rounded-lg p-3 mb-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-slate-500">HAI Type</span>
-                  <span className="text-sm font-bold text-cyan-400">{h.type}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="text-center">
-                    <p className="text-slate-500">Organism</p>
-                    <p className="font-mono font-bold text-slate-300 text-[11px]">{h.organism}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-slate-500">Resistance</p>
-                    <p className={`font-mono font-bold ${h.resistance !== "N/A" ? "text-rose-400" : "text-slate-300"} text-[11px]`}>{h.resistance}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-slate-500">Day</p>
-                    <p className="font-mono font-bold text-slate-300">{h.onsetDay}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="text-[11px] text-slate-500 mb-1">
-                <span className="font-medium">Device:</span> {h.device} ({h.daysDevice}d)
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-800 pt-3 mt-2">
-                <ToneBadge tone={h.status === "Active" ? "red" : h.status === "Resolved" ? "green" : "yellow"}>{h.status}</ToneBadge>
-                <span className="flex items-center gap-1 text-[11px] font-semibold text-cyan-400">Detail <ChevronRight size={13} /></span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {filtered.length === 0 && <EmptyState message="No HAI records match" icon={Bug} />}
-      {modal && (
-        <Modal title={`HAI — ${modal.type}`} subtitle={modal.id} onClose={() => setModal(null)}>
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="Patient" value={modal.patient} />
-              <Row label="Age" value={modal.age} />
-              <Row label="Unit" value={modal.unit} />
-              <Row label="HAI Type" value={modal.type} />
-              <Row label="Organism" value={modal.organism} />
-              <Row label="Resistance" value={modal.resistance} />
-              <Row label="Device" value={modal.device} />
-              <Row label="Days on Device" value={modal.daysDevice} />
-              <Row label="Onset Day" value={modal.onsetDay} />
-              <Row label="Severity" value={modal.severity} />
-              <Row label="Reported By" value={modal.reportedBy} />
-              <Row label="Status" value={modal.status} />
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- *  Tab 2 – Antibiotic Stewardship
- * ------------------------------------------------------------------ */
-
-function AntibioticStewardshipTab({ data, toasts }) {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("All");
-  const [modal, setModal] = useState(null);
-  const filters = ["All", "Restricted", "De-escalated"];
-
-  const filtered = useMemo(
-    () =>
-      data.filter((a) => {
-        const s =
-          !search ||
-          a.drug.toLowerCase().includes(search.toLowerCase()) ||
-          a.patient.toLowerCase().includes(search.toLowerCase()) ||
-          a.unit.toLowerCase().includes(search.toLowerCase()) ||
-          a.indication.toLowerCase().includes(search.toLowerCase());
-        const f =
-          filter === "All" ? true :
-          filter === "Restricted" ? a.restricted :
-          filter === "De-escalated" ? a.deEscalated : true;
-        return s && f;
-      }),
-    [data, search, filter]
-  );
-
-  const onExport = useCallback(() => {
-    downloadCsv(
-      "antibiotic-stewardship.csv",
-      filtered.map((a) => ({
-        ID: a.id, Drug: a.drug, Category: a.category, Patient: a.patient,
-        Unit: a.unit, DOT: a.dot, Indication: a.indication,
-        Restricted: a.restricted, DeEscalated: a.deEscalated, Spectrum: a.spectrum,
-      }))
-    );
-    toasts.toast("Antibiotic data exported", "Low");
-  }, [filtered, toasts]);
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <CompactSearch value={search} onChange={setSearch} placeholder="Search drug, patient, unit..." />
-        <FilterChips options={filters} value={filter} onChange={setFilter} />
-        <div className="ml-auto"><ExportCsvButton onClick={onExport} /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtered.map((a) => (
-          <div
-            key={a.id}
-            onClick={() => setModal(a)}
-            className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group"
-          >
+        {filtered.map((p) => (
+          <div key={p.id} onClick={() => setModal(p)} className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group">
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-100 group-hover:text-emerald-400 transition">{a.drug}</p>
-                <p className="text-xs text-slate-500">{a.id} · {a.category}</p>
-              </div>
-              <div className="flex gap-1">
-                {a.restricted && <ToneBadge tone="red">Restricted</ToneBadge>}
-                {a.deEscalated && <ToneBadge tone="green">De-escalated</ToneBadge>}
-              </div>
+              <div><p className="text-sm font-semibold text-slate-100 group-hover:text-red-400 transition">{p.patient}</p><p className="text-xs text-slate-500">{p.id} \u00b7 {p.unit} \u00b7 Age {p.age}</p></div>
+              <ToneBadge tone={p.riskLevel === "Critical" ? "red" : p.riskLevel === "High" ? "amber" : p.riskLevel === "Moderate" ? "yellow" : "green"}>{p.riskLevel}</ToneBadge>
             </div>
             <div className="bg-slate-950/50 rounded-lg p-3 mb-3">
+              <div className="flex items-center justify-between mb-1"><span className="text-xs text-slate-500">Infection</span><span className="text-sm font-bold text-red-400">{p.infection}</span></div>
+              <p className="text-xs text-slate-400 mb-2">{p.organism}</p>
               <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="text-center">
-                  <p className="text-slate-500">DOT</p>
-                  <p className="font-mono font-bold text-slate-300">{a.dot}d</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-slate-500">Spectrum</p>
-                  <p className={`font-bold ${a.spectrum === "Last-resort" ? "text-rose-400" : a.spectrum === "Broad" ? "text-amber-400" : "text-emerald-400"}`}>{a.spectrum}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-slate-500">Unit</p>
-                  <p className="font-bold text-slate-300 text-[11px]">{a.unit}</p>
-                </div>
+                <div className="text-center"><p className="text-slate-500">Temp</p><p className={`font-mono font-bold ${p.temp >= 39 ? "text-red-400" : p.temp >= 38 ? "text-amber-400" : "text-emerald-400"}`}>{p.temp}\u00b0C</p></div>
+                <div className="text-center"><p className="text-slate-500">WBC</p><p className={`font-mono font-bold ${p.wbc >= 15000 ? "text-red-400" : p.wbc >= 11000 ? "text-amber-400" : "text-emerald-400"}`}>{p.wbc.toLocaleString()}</p></div>
+                <div className="text-center"><p className="text-slate-500">Day</p><p className="font-mono font-bold text-slate-300">{p.onsetDay}</p></div>
               </div>
             </div>
-            <div className="text-[11px] text-slate-500 mb-1">
-              <span className="font-medium">Patient:</span> {a.patient}
-            </div>
-            <div className="text-[11px] text-slate-500 mb-1">
-              <span className="font-medium">Dose:</span> {a.dose}
-            </div>
-            <div className="text-[11px] text-slate-500 mb-3">
-              <span className="font-medium">Indication:</span> {a.indication}
-            </div>
-            <div className="flex items-center justify-between border-t border-slate-800 pt-3">
-              <span className="text-[10px] text-slate-500">{a.prescriber} · {a.startDay}</span>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">Review <ChevronRight size={13} /></span>
+            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1"><Bug className="w-3 h-3" /><span className="truncate">{p.site}</span></div>
+            <div className="flex items-center gap-2 text-xs text-slate-500"><Syringe className="w-3 h-3" /><span className="truncate">{p.antibiotics.join(", ")}</span></div>
+            <div className="flex items-center gap-2 mt-2">
+              {p.isolation && <ToneBadge tone="red">Isolation</ToneBadge>}
+              {p.resolved && <ToneBadge tone="green">Resolved</ToneBadge>}
+              <ToneBadge tone={p.sensitivity.includes("Resistant") ? "red" : "green"}>{p.sensitivity.split(" \u2014 ")[0]}</ToneBadge>
             </div>
           </div>
         ))}
       </div>
-      {filtered.length === 0 && <EmptyState message="No antibiotic orders match" icon={Pill} />}
-      {modal && (
-        <Modal title={`Antibiotic — ${modal.drug}`} subtitle={modal.id} onClose={() => setModal(null)}>
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="Drug" value={modal.drug} />
-              <Row label="Category" value={modal.category} />
-              <Row label="Patient" value={modal.patient} />
-              <Row label="Unit" value={modal.unit} />
-              <Row label="Dose" value={modal.dose} />
-              <Row label="DOT" value={modal.dot + " days"} />
-              <Row label="Indication" value={modal.indication} />
-              <Row label="Restricted" value={modal.restricted ? "Yes" : "No"} />
-              <Row label="De-escalated" value={modal.deEscalated ? "Yes" : "No"} />
-              <Row label="Spectrum" value={modal.spectrum} />
-              <Row label="Start Date" value={modal.startDay} />
-              <Row label="Prescriber" value={modal.prescriber} />
-            </div>
+      {filtered.length === 0 && <EmptyState message="No HAI cases match your filters" icon={Bug} />}
+      {modal && <Modal title={`HAI \u2014 ${modal.patient}`} subtitle={`${modal.id} \u00b7 ${modal.infection}`} onClose={() => setModal(null)}>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <Row label="Infection" value={modal.infection} /><Row label="Organism" value={modal.organism} />
+            <Row label="Site" value={modal.site} /><Row label="Onset" value={`Day ${modal.onsetDay}`} />
+            <Row label="Temperature" value={`${modal.temp}\u00b0C`} /><Row label="WBC" value={modal.wbc.toLocaleString()} />
+            <Row label="Cultures" value={modal.cultures} /><Row label="Sensitivity" value={modal.sensitivity} />
           </div>
-        </Modal>
-      )}
+          <div className="border-t border-slate-800 pt-3 grid grid-cols-2 gap-3">
+            <Row label="Antibiotics" value={modal.antibiotics.join(", ")} /><Row label="Isolation" value={modal.isolation ? "Contact + Droplet" : "Standard"} />
+            <Row label="Risk" value={modal.riskLevel} /><Row label="Nurse" value={modal.nurse} />
+            <Row label="Reported By" value={modal.reportedBy} /><Row label="Last Culture" value={modal.lastCulture} />
+          </div>
+        </div>
+      </Modal>}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ *
- *  Tab 3 – Hand Hygiene Compliance
- * ------------------------------------------------------------------ */
-
-function HandHygieneTab({ data, toasts }) {
+/* ── Tab: Antimicrobial Stewardship ── */
+function StewardshipTab({ toasts }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [modal, setModal] = useState(null);
-  const filters = ["All", "≥95%", "90-94%", "<90%"];
-
-  const filtered = useMemo(
-    () =>
-      data.filter((h) => {
-        const s =
-          !search ||
-          h.department.toLowerCase().includes(search.toLowerCase()) ||
-          h.observer.toLowerCase().includes(search.toLowerCase());
-        const f =
-          filter === "All" ? true :
-          filter === "≥95%" ? h.rate >= 95 :
-          filter === "90-94%" ? h.rate >= 90 && h.rate < 95 :
-          filter === "<90%" ? h.rate < 90 : true;
-        return s && f;
-      }),
-    [data, search, filter]
-  );
-
-  const overallRate = useMemo(() => {
-    const totalOpp = data.reduce((a, d) => a + d.opportunities, 0);
-    const totalPerf = data.reduce((a, d) => a + d.performed, 0);
-    return totalOpp > 0 ? Math.round((totalPerf / totalOpp) * 100) : 0;
-  }, [data]);
-
+  const filters = ["All", "Restricted", "De-Escalated", "High-Cost", "Last-Resort"];
+  const filtered = useMemo(() => STEWARDSHIP_DRUGS.filter((d) => {
+    const s = !search || d.drug.toLowerCase().includes(search.toLowerCase()) || d.indication.toLowerCase().includes(search.toLowerCase());
+    const f = filter === "All" ? true : filter === "Restricted" ? d.restricted : filter === "De-Escalated" ? d.deEscalated : filter === "High-Cost" ? d.costPerDay >= 100 : d.spectrum === "Last-Resort";
+    return s && f;
+  }), [search, filter]);
   const onExport = useCallback(() => {
-    downloadCsv(
-      "hand-hygiene.csv",
-      filtered.map((h) => ({
-        Department: h.department, Opportunities: h.opportunities,
-        Performed: h.performed, Rate: h.rate, Observer: h.observer,
-        LastAudit: h.lastAudit, Trend: h.trend,
-      }))
-    );
-    toasts.toast("Hand hygiene data exported", "Low");
+    downloadCsv("stewardship.csv", filtered.map((d) => ({ Drug: d.drug, Class: d.drugClass, Indication: d.indication, DDD: d.ddd, Cost: `$${d.costPerDay}`, Restricted: d.restricted ? "Yes" : "No", DOT: d.dot, Interventions: d.interventions, DeEsc: d.deEscalated ? "Yes" : "No", Pharm: d.pharm })));
+    toasts.add({ tone: "success", text: "Stewardship data exported" });
   }, [filtered, toasts]);
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+        <StatCard icon={Pill} label="Restricted Drugs" value={STEWARDSHIP_DRUGS.filter((d) => d.restricted).length} accent="text-amber-400" />
+        <StatCard icon={TrendingDown} label="De-Escalated" value={STEWARDSHIP_DRUGS.filter((d) => d.deEscalated).length} accent="text-emerald-400" />
+        <StatCard icon={AlertTriangle} label="Total Interventions" value={STEWARDSHIP_DRUGS.reduce((s, d) => s + d.interventions, 0)} accent="text-red-400" />
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <CompactSearch value={search} onChange={setSearch} placeholder="Search drug, indication..." />
+        <FilterChips options={filters} value={filter} onChange={setFilter} />
+        <div className="ml-auto"><ExportCsvButton onClick={onExport} /></div>
+      </div>
+      <div className="space-y-3">
+        {filtered.map((d) => (
+          <div key={d.id} onClick={() => setModal(d)} className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group">
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm font-semibold text-slate-100 group-hover:text-cyan-400 transition">{d.drug}</p>
+                  <ToneBadge tone={d.restricted ? "amber" : "green"}>{d.restricted ? "Restricted" : "Open"}</ToneBadge>
+                  {d.deEscalated && <ToneBadge tone="cyan">De-Escalated</ToneBadge>}
+                </div>
+                <p className="text-xs text-slate-500">{d.drugClass} \u00b7 {d.indication}</p>
+              </div>
+              <div className="flex items-center gap-4 text-xs">
+                <div className="text-center"><p className="text-slate-500">DDD</p><p className="font-mono font-bold text-slate-200">{d.ddd}</p></div>
+                <div className="text-center"><p className="text-slate-500">Cost/Day</p><p className={`font-mono font-bold ${d.costPerDay >= 100 ? "text-red-400" : "text-emerald-400"}`}>${d.costPerDay}</p></div>
+                <div className="text-center"><p className="text-slate-500">DOT</p><p className="font-mono font-bold text-slate-200">{d.dot}d</p></div>
+              </div>
+              <div className="flex items-center gap-2">
+                {d.alerts.length > 0 && <ToneBadge tone="red">{d.alerts.length} Alert{d.alerts.length > 1 ? "s" : ""}</ToneBadge>}
+                <ToneBadge tone="purple">{d.formulary.split(" \u2014 ")[0]}</ToneBadge>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {filtered.length === 0 && <EmptyState message="No antimicrobials match your filters" icon={Pill} />}
+      {modal && <Modal title={`Stewardship \u2014 ${modal.drug}`} subtitle={modal.drugClass} onClose={() => setModal(null)}>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <Row label="Drug" value={modal.drug} /><Row label="Class" value={modal.drugClass} />
+            <Row label="Indication" value={modal.indication} /><Row label="DDD" value={`${modal.ddd} g`} />
+            <Row label="Units Dispensed" value={modal.unitsDispensed} /><Row label="Cost/Day" value={`$${modal.costPerDay}`} />
+            <Row label="Days of Therapy" value={`${modal.dot} days`} /><Row label="Spectrum" value={modal.spectrum} />
+          </div>
+          <div className="border-t border-slate-800 pt-3 grid grid-cols-2 gap-3">
+            <Row label="Restricted" value={modal.restricted ? "Yes" : "No"} /><Row label="Formulary" value={modal.formulary} />
+            <Row label="Interventions" value={modal.interventions} /><Row label="De-Escalated" value={modal.deEscalated ? "Yes" : "No"} />
+            <Row label="Pharmacist" value={modal.pharm} />
+          </div>
+          {modal.alerts.length > 0 && <div className="border-t border-slate-800 pt-3">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Active Alerts</h4>
+            <ul className="space-y-1">{modal.alerts.map((a, i) => <li key={i} className="flex items-start gap-2 text-xs text-amber-400"><AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" /><span>{a}</span></li>)}</ul>
+          </div>}
+        </div>
+      </Modal>}
+    </div>
+  );
+}
 
+/* ── Tab: Hand Hygiene Compliance ── */
+function HandHygieneTab({ toasts }) {
+  const [data, setData] = useState(HAND_HYGIENE_OBS);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("All");
+  const [sim, setSim] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [modal, setModal] = useState(null);
+  const ref = useRef(null);
+  const filters = ["All", "Passing", "Failing", "Borderline", "Excellent"];
+  const filtered = useMemo(() => data.filter((h) => {
+    const s = !search || h.unit.toLowerCase().includes(search.toLowerCase());
+    const f = filter === "All" || h.status === filter;
+    return s && f;
+  }), [data, search, filter]);
+  useEffect(() => {
+    if (sim) ref.current = setInterval(() => setData((d) => d.map(simHygiene)), 2000 / speed);
+    return () => clearInterval(ref.current);
+  }, [sim, speed]);
+  const onExport = useCallback(() => {
+    downloadCsv("hand-hygiene.csv", filtered.map((h) => ({ Unit: h.unit, Period: h.period, Before: `${h.beforePt}%`, After: `${h.afterPt}%`, Aseptic: `${h.beforeAseptic}%`, "Body Fluid": `${h.afterBF}%`, Contact: `${h.afterContact}%`, Rate: `${h.rate}%`, Target: `${h.target}%`, Status: h.status, Trend: h.trend })));
+    toasts.add({ tone: "success", text: "Hand hygiene data exported" });
+  }, [filtered, toasts]);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <CompactSearch value={search} onChange={setSearch} placeholder="Search department, observer..." />
+        <CompactSearch value={search} onChange={setSearch} placeholder="Search unit..." />
         <FilterChips options={filters} value={filter} onChange={setFilter} />
-        <div className="ml-auto">
-          <span className="text-xs text-slate-400 mr-3">Overall: <span className={`font-bold ${overallRate >= 95 ? "text-emerald-400" : overallRate >= 90 ? "text-sky-400" : "text-rose-400"}`}>{overallRate}%</span></span>
+        <div className="ml-auto flex items-center gap-2">
           <ExportCsvButton onClick={onExport} />
+          <button onClick={() => setSim((s) => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${sim ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"}`}>
+            {sim ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />} {sim ? "Pause" : "Simulate"}
+          </button>
+          {sim && <div className="flex items-center gap-1 bg-slate-800 rounded-lg border border-slate-700 px-1">
+            {[1, 2, 4].map((s) => <button key={s} onClick={() => setSpeed(s)} className={`px-2 py-1 text-xs rounded-md font-medium transition ${speed === s ? "bg-cyan-500/20 text-cyan-400" : "text-slate-400 hover:text-slate-200"}`}>{s}x</button>)}
+          </div>}
+          {sim && <button onClick={() => setData(HAND_HYGIENE_OBS)} className="flex items-center gap-1 px-2 py-1.5 text-xs text-slate-400 hover:text-slate-200"><RefreshCw className="w-3 h-3" /> Reset</button>}
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.map((h) => (
-          <div
-            key={h.id}
-            onClick={() => setModal(h)}
-            className={`bg-slate-900 border rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group ${
-              h.rate < 90 ? "border-rose-500/20" : "border-slate-800"
-            }`}
-          >
+          <div key={h.id} onClick={() => setModal(h)} className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group">
             <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-100 group-hover:text-sky-400 transition">{h.department}</p>
-                <p className="text-xs text-slate-500">{h.id} · {h.observer}</p>
-              </div>
-              <div className="text-right">
-                <p className={`text-2xl font-black ${h.rate >= 95 ? "text-emerald-400" : h.rate >= 90 ? "text-sky-400" : "text-rose-400"}`}>{h.rate}%</p>
-                <p className="text-[9px] text-slate-500 uppercase tracking-wider">compliance</p>
-              </div>
-            </div>
-            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-3">
-              <div className={`h-full rounded-full transition-all ${complianceBar(h.rate)}`} style={{ width: `${h.rate}%` }} />
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs mb-3">
-              <div className="text-center">
-                <p className="text-slate-500">Opportunities</p>
-                <p className="font-mono font-bold text-slate-300">{h.opportunities.toLocaleString()}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-slate-500">Performed</p>
-                <p className="font-mono font-bold text-slate-300">{h.performed.toLocaleString()}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-slate-500">Missed</p>
-                <p className="font-mono font-bold text-rose-400">{(h.opportunities - h.performed).toLocaleString()}</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between border-t border-slate-800 pt-3">
-              <div className="flex items-center gap-1.5">
-                {h.trend === "up" && <TrendingUp size={13} className="text-emerald-400" />}
-                {h.trend === "down" && <TrendingDown size={13} className="text-rose-400" />}
-                {h.trend === "stable" && <Activity size={13} className="text-sky-400" />}
-                <span className="text-[10px] text-slate-500 capitalize">{h.trend}</span>
-              </div>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-sky-400">Detail <ChevronRight size={13} /></span>
-            </div>
-          </div>
-        ))}
-      </div>
-      {filtered.length === 0 && <EmptyState message="No hand hygiene records match" icon={Droplets} />}
-      {modal && (
-        <Modal title={`Hand Hygiene — ${modal.department}`} subtitle={modal.id} onClose={() => setModal(null)}>
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="Department" value={modal.department} />
-              <Row label="Compliance" value={modal.rate + "%"} />
-              <Row label="Opportunities" value={modal.opportunities} />
-              <Row label="Performed" value={modal.performed} />
-              <Row label="Missed" value={modal.opportunities - modal.performed} />
-              <Row label="Observer" value={modal.observer} />
-              <Row label="Last Audit" value={modal.lastAudit} />
-              <Row label="Trend" value={modal.trend} />
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- *  Tab 4 – Isolation & PPE
- * ------------------------------------------------------------------ */
-
-function IsolationPpeTab({ data, toasts }) {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("All");
-  const [modal, setModal] = useState(null);
-  const filters = ["All", "Airborne", "Contact", "Droplet", "Contact + Droplet"];
-
-  const filtered = useMemo(
-    () =>
-      data.filter((r) => {
-        const s =
-          !search ||
-          r.patient.toLowerCase().includes(search.toLowerCase()) ||
-          r.room.toLowerCase().includes(search.toLowerCase()) ||
-          r.unit.toLowerCase().includes(search.toLowerCase()) ||
-          r.organism.toLowerCase().includes(search.toLowerCase());
-        const f = filter === "All" ? true : r.precaution === filter;
-        return s && f;
-      }),
-    [data, search, filter]
-  );
-
-  const onExport = useCallback(() => {
-    downloadCsv(
-      "isolation-rooms.csv",
-      filtered.map((r) => ({
-        Room: r.room, Unit: r.unit, Patient: r.patient,
-        Precaution: r.precaution, Organism: r.organism,
-        PPECompliance: r.ppeCompliance, DaysIsolation: r.daysIsolation,
-        VisitorsRestricted: r.visitorsRestricted, Status: r.status,
-      }))
-    );
-    toasts.toast("Isolation data exported", "Low");
-  }, [filtered, toasts]);
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <CompactSearch value={search} onChange={setSearch} placeholder="Search patient, room, unit..." />
-        <FilterChips options={filters} value={filter} onChange={setFilter} />
-        <div className="ml-auto"><ExportCsvButton onClick={onExport} /></div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtered.map((r) => (
-          <div
-            key={r.id}
-            onClick={() => setModal(r)}
-            className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-100 group-hover:text-violet-400 transition">{r.room}</p>
-                <p className="text-xs text-slate-500">{r.patient} · {r.unit}</p>
-              </div>
-              <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${precautionColor(r.precaution)}`}>
-                {r.precaution}
-              </span>
+              <div><p className="text-sm font-semibold text-slate-100 group-hover:text-cyan-400 transition">{h.unit}</p><p className="text-xs text-slate-500">{h.period} \u00b7 {h.totalOpp} opportunities</p></div>
+              <ToneBadge tone={h.status === "Excellent" ? "green" : h.status === "Passing" ? "emerald" : h.status === "Failing" ? "red" : "amber"}>{h.status}</ToneBadge>
             </div>
             <div className="bg-slate-950/50 rounded-lg p-3 mb-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-slate-500">PPE Compliance</span>
-                <span className={`text-sm font-bold ${r.ppeCompliance >= 95 ? "text-emerald-400" : r.ppeCompliance >= 90 ? "text-sky-400" : "text-rose-400"}`}>{r.ppeCompliance}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full ${complianceBar(r.ppeCompliance)}`} style={{ width: `${r.ppeCompliance}%` }} />
-              </div>
+              <div className="flex items-center justify-between mb-2"><span className="text-xs text-slate-500">Compliance</span><span className={`text-lg font-mono font-bold ${h.rate >= h.target ? "text-emerald-400" : "text-red-400"}`}>{h.rate}%</span></div>
+              <div className="w-full bg-slate-800 rounded-full h-2"><div className={`h-2 rounded-full transition-all ${h.rate >= h.target ? "bg-emerald-500" : "bg-red-500"}`} style={{ width: `${Math.min(h.rate, 100)}%` }} /></div>
+              <p className="text-xs text-slate-500 mt-1">Target: {h.target}%</p>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-              <div className="bg-slate-950/50 rounded-lg p-2 text-center">
-                <p className="text-slate-500">Days</p>
-                <p className="font-mono font-bold text-slate-300">{r.daysIsolation}</p>
-              </div>
-              <div className="bg-slate-950/50 rounded-lg p-2 text-center">
-                <p className="text-slate-500">Staff Briefed</p>
-                <p className="font-mono font-bold text-slate-300">{r.staffBriefed}</p>
-              </div>
+            <div className="grid grid-cols-5 gap-1 text-center text-xs">
+              <div><p className="text-slate-500 text-[10px]">PrePt</p><p className="font-mono font-bold text-slate-300">{h.beforePt}%</p></div>
+              <div><p className="text-slate-500 text-[10px]">PostPt</p><p className="font-mono font-bold text-slate-300">{h.afterPt}%</p></div>
+              <div><p className="text-slate-500 text-[10px]">Aseptic</p><p className="font-mono font-bold text-slate-300">{h.beforeAseptic}%</p></div>
+              <div><p className="text-slate-500 text-[10px]">BodyFl</p><p className="font-mono font-bold text-slate-300">{h.afterBF}%</p></div>
+              <div><p className="text-slate-500 text-[10px]">Contact</p><p className={`font-mono font-bold ${h.afterContact >= 85 ? "text-emerald-400" : h.afterContact >= 70 ? "text-amber-400" : "text-red-400"}`}>{h.afterContact}%</p></div>
             </div>
-            <div className="flex items-center gap-2 mb-2">
-              {r.visitorsRestricted && <ToneBadge tone="amber">Visitors Restricted</ToneBadge>}
-              <ToneBadge tone={r.status === "Active" ? "red" : "yellow"}>{r.status}</ToneBadge>
-            </div>
-            <div className="text-[11px] text-slate-500 mb-3">
-              <span className="font-medium">Organism:</span> {r.organism}
-            </div>
-            <div className="flex items-center justify-between border-t border-slate-800 pt-3">
-              <span className="text-[10px] text-slate-500">Unit: {r.unit}</span>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-violet-400">Manage <ChevronRight size={13} /></span>
+            <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
+              <span>{h.auditors} auditors</span>
+              <ToneBadge tone={h.trend === "Improving" ? "green" : h.trend === "Declining" ? "red" : "yellow"}>{h.trend}</ToneBadge>
             </div>
           </div>
         ))}
       </div>
-      {filtered.length === 0 && <EmptyState message="No isolation rooms match" icon={Shield} />}
-      {modal && (
-        <Modal title={`Isolation — ${modal.room}`} subtitle={modal.patient} onClose={() => setModal(null)}>
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="Room" value={modal.room} />
-              <Row label="Unit" value={modal.unit} />
-              <Row label="Patient" value={modal.patient} />
-              <Row label="Precaution" value={modal.precaution} />
-              <Row label="Organism" value={modal.organism} />
-              <Row label="PPE Compliance" value={modal.ppeCompliance + "%"} />
-              <Row label="Days in Isolation" value={modal.daysIsolation} />
-              <Row label="Staff Briefed" value={modal.staffBriefed} />
-              <Row label="Visitors Restricted" value={modal.visitorsRestricted ? "Yes" : "No"} />
-              <Row label="Status" value={modal.status} />
-            </div>
+      {filtered.length === 0 && <EmptyState message="No hand hygiene units match your filters" icon={Hand} />}
+      {modal && <Modal title={`Hand Hygiene \u2014 ${modal.unit}`} subtitle={modal.period} onClose={() => setModal(null)}>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <Row label="Overall" value={`${modal.rate}%`} /><Row label="Target" value={`${modal.target}%`} />
+            <Row label="Opportunities" value={modal.totalOpp} /><Row label="Compliant" value={modal.compliant} />
+            <Row label="Before Patient" value={`${modal.beforePt}%`} /><Row label="After Patient" value={`${modal.afterPt}%`} />
+            <Row label="Before Aseptic" value={`${modal.beforeAseptic}%`} /><Row label="After Body Fluid" value={`${modal.afterBF}%`} />
+            <Row label="After Contact" value={`${modal.afterContact}%`} /><Row label="Auditors" value={modal.auditors} />
           </div>
-        </Modal>
-      )}
+          <div className="border-t border-slate-800 pt-3 grid grid-cols-2 gap-3">
+            <Row label="Handwash" value={modal.hw} /><Row label="Sanitizer" value={modal.sanit} />
+            <Row label="Status" value={modal.status} /><Row label="Trend" value={modal.trend} /><Row label="Notes" value={modal.notes} />
+          </div>
+        </div>
+      </Modal>}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ *
- *  Tab 5 – Outbreak Surveillance
- * ------------------------------------------------------------------ */
-
-function OutbreakWatchTab({ data, toasts }) {
+/* ── Tab: Outbreak Management ── */
+function OutbreakTab({ toasts }) {
+  const [data, setData] = useState(OUTBREAK_EVENTS);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [sim, setSim] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const [modal, setModal] = useState(null);
-  const filters = ["All", "Active", "Investigating", "Declining"];
-
-  const filtered = useMemo(
-    () =>
-      data.filter((o) => {
-        const s =
-          !search ||
-          o.organism.toLowerCase().includes(search.toLowerCase()) ||
-          o.unit.toLowerCase().includes(search.toLowerCase()) ||
-          o.id.toLowerCase().includes(search.toLowerCase());
-        const f = filter === "All" ? true : o.status === filter;
-        return s && f;
-      }),
-    [data, search, filter]
-  );
-
+  const ref = useRef(null);
+  const filters = ["All", "Active", "Contained", "Critical", "High"];
+  const filtered = useMemo(() => data.filter((o) => {
+    const s = !search || o.pathogen.toLowerCase().includes(search.toLowerCase()) || o.units.some((u) => u.toLowerCase().includes(search.toLowerCase()));
+    const f = filter === "All" ? true : filter === "Active" || filter === "Contained" ? o.status === filter : o.risk === filter;
+    return s && f;
+  }), [data, search, filter]);
+  useEffect(() => {
+    if (sim) ref.current = setInterval(() => setData((d) => d.map(simOutbreak)), 2000 / speed);
+    return () => clearInterval(ref.current);
+  }, [sim, speed]);
   const onExport = useCallback(() => {
-    downloadCsv(
-      "outbreak-surveillance.csv",
-      filtered.map((o) => ({
-        ID: o.id, Organism: o.organism, Type: o.type, Cases: o.cases,
-        Unit: o.unit, FirstSeen: o.firstSeen, LastSeen: o.lastSeen,
-        Risk: o.risk, Status: o.status, Source: o.source,
-      }))
-    );
-    toasts.toast("Outbreak data exported", "Low");
+    downloadCsv("outbreaks.csv", filtered.map((o) => ({ Pathogen: o.pathogen, Type: o.type, Units: o.units.join("; "), Cases: o.cases, R0: o.r0, Status: o.status, Phase: o.phase, Traced: o.traced, Isolated: o.isolated, Risk: o.risk, Escalation: o.escalate, Lead: o.lead, PH: o.phNotif ? "Yes" : "No" })));
+    toasts.add({ tone: "success", text: "Outbreak data exported" });
   }, [filtered, toasts]);
-
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <CompactSearch value={search} onChange={setSearch} placeholder="Search organism, unit..." />
+        <CompactSearch value={search} onChange={setSearch} placeholder="Search pathogen, unit..." />
         <FilterChips options={filters} value={filter} onChange={setFilter} />
-        <div className="ml-auto"><ExportCsvButton onClick={onExport} /></div>
+        <div className="ml-auto flex items-center gap-2">
+          <ExportCsvButton onClick={onExport} />
+          <button onClick={() => setSim((s) => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${sim ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"}`}>
+            {sim ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />} {sim ? "Pause" : "Simulate"}
+          </button>
+          {sim && <div className="flex items-center gap-1 bg-slate-800 rounded-lg border border-slate-700 px-1">
+            {[1, 2, 4].map((s) => <button key={s} onClick={() => setSpeed(s)} className={`px-2 py-1 text-xs rounded-md font-medium transition ${speed === s ? "bg-cyan-500/20 text-cyan-400" : "text-slate-400 hover:text-slate-200"}`}>{s}x</button>)}
+          </div>}
+          {sim && <button onClick={() => setData(OUTBREAK_EVENTS)} className="flex items-center gap-1 px-2 py-1.5 text-xs text-slate-400 hover:text-slate-200"><RefreshCw className="w-3 h-3" /> Reset</button>}
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-4">
         {filtered.map((o) => (
-          <div
-            key={o.id}
-            onClick={() => setModal(o)}
-            className={`bg-slate-900 border rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group ${
-              o.risk === "Critical" ? "border-rose-500/30" : o.risk === "High" ? "border-amber-500/20" : "border-slate-800"
-            }`}
-          >
-            <div className="flex items-start justify-between mb-3">
+          <div key={o.id} onClick={() => setModal(o)} className="bg-slate-900 border border-slate-800 rounded-xl p-5 cursor-pointer hover:border-slate-600 transition group">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
               <div>
-                <p className="text-sm font-semibold text-slate-100 group-hover:text-rose-400 transition">{o.organism}</p>
-                <p className="text-xs text-slate-500">{o.id} · {o.unit}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-base font-semibold text-slate-100 group-hover:text-red-400 transition">{o.pathogen}</p>
+                  <ToneBadge tone={o.status === "Active" ? "red" : "green"}>{o.status}</ToneBadge>
+                  <ToneBadge tone={o.risk === "Critical" ? "red" : o.risk === "High" ? "amber" : "yellow"}>{o.risk}</ToneBadge>
+                </div>
+                <p className="text-xs text-slate-500">{o.type} \u00b7 Phase: {o.phase} \u00b7 Lead: {o.lead}</p>
               </div>
-              <ToneBadge tone={riskTone(o.risk)}>{o.risk}</ToneBadge>
-            </div>
-            <div className="bg-slate-950/50 rounded-lg p-3 mb-3">
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="text-center">
-                  <p className="text-slate-500">Cases</p>
-                  <p className={`font-mono font-bold ${o.cases >= 5 ? "text-rose-400" : "text-slate-300"}`}>{o.cases}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-slate-500">First Seen</p>
-                  <p className="font-bold text-slate-300 text-[11px]">{o.firstSeen}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-slate-500">Last Seen</p>
-                  <p className="font-bold text-slate-300 text-[11px]">{o.lastSeen}</p>
-                </div>
+              <div className="flex items-center gap-4 text-xs">
+                <div className="text-center"><p className="text-slate-500">Cases</p><p className="font-mono font-bold text-red-400 text-lg">{o.cases}</p></div>
+                <div className="text-center"><p className="text-slate-500">R\u2080</p><p className={`font-mono font-bold text-lg ${o.r0 >= 2 ? "text-red-400" : o.r0 >= 1 ? "text-amber-400" : "text-emerald-400"}`}>{o.r0}</p></div>
+                <div className="text-center"><p className="text-slate-500">Traced</p><p className="font-mono font-bold text-slate-200 text-lg">{o.traced}</p></div>
+                <div className="text-center"><p className="text-slate-500">Isolated</p><p className="font-mono font-bold text-amber-400 text-lg">{o.isolated}</p></div>
               </div>
             </div>
-            <div className="text-[11px] text-slate-500 mb-2">
-              <span className="font-medium">Source:</span> {o.source}
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-2"><span>Units: {o.units.join(", ")}</span></div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <ToneBadge tone="purple">Level {o.escalate}</ToneBadge>
+              {o.phNotif && <ToneBadge tone="cyan">PH Notified</ToneBadge>}
+              <ToneBadge tone="slate">{o.firstCase} \u2192 {o.lastCase}</ToneBadge>
             </div>
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {o.actions.slice(0, 2).map((a, i) => (
-                <span key={i} className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-400">{a}</span>
-              ))}
-              {o.actions.length > 2 && (
-                <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-500">+{o.actions.length - 2}</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between border-t border-slate-800 pt-3">
-              <ToneBadge tone={o.status === "Active" ? "red" : o.status === "Investigating" ? "amber" : "green"}>{o.status}</ToneBadge>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-400">Investigate <ChevronRight size={13} /></span>
-            </div>
+            <p className="text-xs text-slate-600 mt-2">Last update: {o.update}</p>
           </div>
         ))}
       </div>
-      {filtered.length === 0 && <EmptyState message="No outbreak clusters detected" icon={AlertOctagon} />}
-      {modal && (
-        <Modal title={`Outbreak — ${modal.organism}`} subtitle={modal.id} onClose={() => setModal(null)}>
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="Organism" value={modal.organism} />
-              <Row label="Type" value={modal.type} />
-              <Row label="Cases" value={modal.cases} />
-              <Row label="Unit" value={modal.unit} />
-              <Row label="First Seen" value={modal.firstSeen} />
-              <Row label="Last Seen" value={modal.lastSeen} />
-              <Row label="Risk Level" value={modal.risk} />
-              <Row label="Status" value={modal.status} />
-              <Row label="Probable Source" value={modal.source} />
-            </div>
-            <div className="border-t border-slate-800 pt-3">
-              <p className="text-xs font-semibold text-slate-400 mb-2">Active Interventions</p>
-              {modal.actions.map((a, i) => (
-                <div key={i} className="flex items-start gap-2 text-xs text-slate-300 mb-1">
-                  <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-amber-500" />
-                  {a}
-                </div>
-              ))}
-            </div>
+      {filtered.length === 0 && <EmptyState message="No outbreak events match your filters" icon={Siren} />}
+      {modal && <Modal title={`Outbreak \u2014 ${modal.pathogen}`} subtitle={modal.id} onClose={() => setModal(null)}>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <Row label="Pathogen" value={modal.pathogen} /><Row label="Type" value={modal.type} />
+            <Row label="Cases" value={modal.cases} /><Row label="R\u2080" value={modal.r0} />
+            <Row label="First Case" value={modal.firstCase} /><Row label="Last Case" value={modal.lastCase} />
+            <Row label="Units" value={modal.units.join(", ")} /><Row label="Status" value={modal.status} />
+            <Row label="Phase" value={modal.phase} /><Row label="Escalation" value={modal.escalate} />
+            <Row label="Risk" value={modal.risk} /><Row label="Lead" value={modal.lead} />
           </div>
-        </Modal>
-      )}
+          <div className="border-t border-slate-800 pt-3 grid grid-cols-2 gap-3">
+            <Row label="Traced" value={`${modal.traced} contacts`} /><Row label="Isolated" value={`${modal.isolated} patients`} />
+            <Row label="Prophylaxis" value={modal.prophylaxis} /><Row label="Env Cleaning" value={modal.envClean} />
+            <Row label="Source" value={modal.source} /><Row label="PH Notified" value={modal.phNotif ? "Yes" : "No"} />
+          </div>
+        </div>
+      </Modal>}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ *
- *  Main hub component
- * ------------------------------------------------------------------ */
-
-export default function InfectionControlStewardshipHub() {
-  const [activeTab, setActiveTab] = useState("hais");
-  const toasts = useToastTray();
-
-  const stats = useMemo(() => {
-    const activeHais = HAI_RECORDS.filter((h) => h.status === "Active").length;
-    const restrictedAbx = ANTIBIOTIC_RECORDS.filter((a) => a.restricted && !a.deEscalated).length;
-    const avgHygiene = Math.round(HAND_HYGIENE.reduce((a, d) => a + d.rate, 0) / HAND_HYGIENE.length);
-    const activeOutbreaks = OUTBREAK_CLUSTERS.filter((o) => o.status === "Active").length;
-    return { activeHais, restrictedAbx, avgHygiene, activeOutbreaks };
-  }, []);
-
+/* ── Tab: Environmental Cleaning Audits ── */
+function EnvironmentalTab({ toasts }) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("All");
+  const [modal, setModal] = useState(null);
+  const filters = ["All", "Pass", "Fail"];
+  const filtered = useMemo(() => ENV_AUDITS.filter((e) => {
+    const s = !search || e.area.toLowerCase().includes(search.toLowerCase()) || e.auditor.toLowerCase().includes(search.toLowerCase());
+    const f = filter === "All" || e.status === filter;
+    return s && f;
+  }), [search, filter]);
+  const onExport = useCallback(() => {
+    downloadCsv("env-audits.csv", filtered.map((e) => ({ Area: e.area, Auditor: e.auditor, Date: e.date, Method: e.method, ATP: e.atp, Threshold: e.threshold, Status: e.status, "High-Touch": `${e.highTouch}%`, Terminal: e.terminal, Bleach: e.bleach, UV: e.uv ? "Yes" : "No", Notes: e.notes })));
+    toasts.add({ tone: "success", text: "Environmental audit data exported" });
+  }, [filtered, toasts]);
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Header */}
-        <PageHeader
-          icon={<ShieldCheck size={26} className="text-emerald-400" />}
-          title="Infection Control & Antimicrobial Stewardship"
-          subtitle="HAIs · Antibiotics · Hand Hygiene · Isolation · Outbreaks"
-        />
-
-        {/* Stat row */}
-        <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard icon={Bug} label="Active HAIs" value={stats.activeHais} sub="Hospital-acquired infections" tone="rose" />
-          <StatCard icon={Pill} label="Restricted ABx" value={stats.restrictedAbx} sub="Non-de-escalated restricted agents" tone="amber" />
-          <StatCard icon={Droplets} label="Hygiene Rate" value={stats.avgHygiene + "%"} sub="Overall hand hygiene compliance" tone="emerald" />
-          <StatCard icon={AlertOctagon} label="Active Outbreaks" value={stats.activeOutbreaks} sub="Clusters under investigation" tone="violet" />
-        </div>
-
-        {/* Tabs */}
-        <div className="mt-8">
-          <TabsBar tabs={TABS} active={activeTab} onChange={setActiveTab} accent="emerald" />
-
-          <div className="mt-5">
-            {activeTab === "hais" && <HaiDashboardTab data={HAI_RECORDS} toasts={toasts} />}
-            {activeTab === "abx" && <AntibioticStewardshipTab data={ANTIBIOTIC_RECORDS} toasts={toasts} />}
-            {activeTab === "hygiene" && <HandHygieneTab data={HAND_HYGIENE} toasts={toasts} />}
-            {activeTab === "isolation" && <IsolationPpeTab data={ISOLATION_ROOMS} toasts={toasts} />}
-            {activeTab === "outbreak" && <OutbreakWatchTab data={OUTBREAK_CLUSTERS} toasts={toasts} />}
-          </div>
-        </div>
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+        <StatCard icon={CheckCircle2} label="Audits Passed" value={ENV_AUDITS.filter((e) => e.status === "Pass").length} accent="text-emerald-400" />
+        <StatCard icon={AlertTriangle} label="Audits Failed" value={ENV_AUDITS.filter((e) => e.status === "Fail").length} accent="text-red-400" />
+        <StatCard icon={Gauge} label="Avg ATP" value={Math.round(ENV_AUDITS.reduce((s, e) => s + e.atp, 0) / ENV_AUDITS.length)} accent="text-cyan-400" />
       </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <CompactSearch value={search} onChange={setSearch} placeholder="Search area, auditor..." />
+        <FilterChips options={filters} value={filter} onChange={setFilter} />
+        <div className="ml-auto"><ExportCsvButton onClick={onExport} /></div>
+      </div>
+      <div className="space-y-3">
+        {filtered.map((e) => (
+          <div key={e.id} onClick={() => setModal(e)} className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer hover:border-slate-600 transition group flex flex-col md:flex-row md:items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-sm font-semibold text-slate-100 group-hover:text-cyan-400 transition">{e.area}</p>
+                <ToneBadge tone={e.status === "Pass" ? "green" : "red"}>{e.status}</ToneBadge>
+              </div>
+              <p className="text-xs text-slate-500">{e.auditor} \u00b7 {e.date} \u00b7 {e.method}</p>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="text-center"><p className="text-slate-500">ATP</p><p className={`font-mono font-bold ${e.atp <= e.threshold ? "text-emerald-400" : "text-red-400"}`}>{e.atp}</p></div>
+              <div className="text-center"><p className="text-slate-500">Threshold</p><p className="font-mono font-bold text-slate-300">{e.threshold}</p></div>
+              <div className="text-center"><p className="text-slate-500">High-Touch</p><p className={`font-mono font-bold ${e.highTouch >= 90 ? "text-emerald-400" : e.highTouch >= 70 ? "text-amber-400" : "text-red-400"}`}>{e.highTouch}%</p></div>
+            </div>
+            <div className="flex items-center gap-2">
+              <ToneBadge tone={e.uv ? "green" : "amber"}>{e.uv ? "UV Done" : "UV Pending"}</ToneBadge>
+              <ToneBadge tone="slate">{e.bleach}</ToneBadge>
+            </div>
+          </div>
+        ))}
+      </div>
+      {filtered.length === 0 && <EmptyState message="No environmental audits match your filters" icon={ShieldCheck} />}
+      {modal && <Modal title={`Env Audit \u2014 ${modal.area}`} subtitle={modal.id} onClose={() => setModal(null)}>
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <Row label="Area" value={modal.area} /><Row label="Auditor" value={modal.auditor} />
+            <Row label="Date" value={modal.date} /><Row label="Method" value={modal.method} />
+            <Row label="ATP Score" value={`${modal.atp} RLU`} /><Row label="Threshold" value={`${modal.threshold} RLU`} />
+            <Row label="Status" value={modal.status} /><Row label="High-Touch" value={`${modal.highTouch}%`} />
+            <Row label="Terminal Clean" value={modal.terminal} /><Row label="Bleach" value={modal.bleach} />
+            <Row label="UV-C Cycle" value={modal.uv ? "Complete" : "Pending"} /><Row label="Since Clean" value={modal.sinceClean} />
+          </div>
+          <div className="border-t border-slate-800 pt-3"><Row label="Notes" value={modal.notes} /></div>
+        </div>
+      </Modal>}
+    </div>
+  );
+}
 
-      {/* Toast tray */}
-      <ToastTray toasts={toasts.toasts} critical={["High", "Critical"]} />
-
-      {/* Footer */}
-      <Footer>
-        MedTrack Infection Control Hub · Antimicrobial Stewardship · {new Date().getFullYear()}
-      </Footer>
+/* ── Main component ── */
+export default function InfectionControlStewardshipHub() {
+  const [activeTab, setActiveTab] = useState("hai");
+  const toasts = useToastTray();
+  const tabs = [
+    { key: "hai", label: "HAI Surveillance", icon: Bug },
+    { key: "stewardship", label: "Antimicrobial Rx", icon: Pill },
+    { key: "hygiene", label: "Hand Hygiene", icon: Hand },
+    { key: "outbreak", label: "Outbreak Mgmt", icon: Siren },
+    { key: "environmental", label: "Env. Cleaning", icon: ShieldCheck },
+  ];
+  const stats = useMemo(() => ({
+    critHai: HAI_SURVEILLANCE.filter((p) => p.riskLevel === "Critical").length,
+    activeOb: OUTBREAK_EVENTS.filter((o) => o.status === "Active").length,
+    totalCases: OUTBREAK_EVENTS.reduce((s, o) => s + o.cases, 0),
+    failHH: HAND_HYGIENE_OBS.filter((h) => h.status === "Failing").length,
+  }), []);
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200">
+      <ToastTray toasts={toasts} />
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        <PageHeader icon={Bug} title="Infection Control & Antimicrobial Stewardship" subtitle="HAI surveillance, antibiotic stewardship, hand hygiene compliance, outbreak management, and environmental cleaning audits" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard icon={AlertTriangle} label="Critical HAI" value={stats.critHai} accent="text-red-400" />
+          <StatCard icon={Siren} label="Active Outbreaks" value={stats.activeOb} accent="text-amber-400" />
+          <StatCard icon={Bug} label="Total Cases" value={stats.totalCases} accent="text-red-400" />
+          <StatCard icon={Hand} label="Failing HH Units" value={stats.failHH} accent="text-cyan-400" />
+        </div>
+        <TabsBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+        <div className="bg-slate-950">
+          {activeTab === "hai" && <HaiSurveillanceTab toasts={toasts} />}
+          {activeTab === "stewardship" && <StewardshipTab toasts={toasts} />}
+          {activeTab === "hygiene" && <HandHygieneTab toasts={toasts} />}
+          {activeTab === "outbreak" && <OutbreakTab toasts={toasts} />}
+          {activeTab === "environmental" && <EnvironmentalTab toasts={toasts} />}
+        </div>
+        <Footer>Infection Control & Antimicrobial Stewardship Hub \u00b7 MedTrack Application \u00b7 N/A \u2014 Clinical Console</Footer>
+      </div>
     </div>
   );
 }
