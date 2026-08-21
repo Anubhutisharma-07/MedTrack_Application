@@ -129,6 +129,7 @@ export const PAGE_LABELS = {
   "lab-automation": { label: "Lab Automation & Diagnostics", keywords: "laboratory analyser assay specimen track qc turnaround" },
   "clinical-ai": { label: "Biomedical & Clinical AI", keywords: "ai model inference deterioration risk triage cds" },
   "biomedical-ai-diagnostics": { label: "AI Diagnostics Overwatch", keywords: "ai diagnostics drift inference overwatch model monitoring" },
+  "poct-governance": { label: "Point-of-Care Testing Governance", keywords: "poct point of care glucose meter blood gas westgard qc levey jennings competency lot cartridge strip" },
   "biomedical-ai-governance": { label: "Biomedical AI Governance", keywords: "ai governance model registry approval bias validation" },
   "patient-ehr-analytics": { label: "Patient EHR Analytics", keywords: "ehr analytics readmission cohort predictive patient record" },
   "ophthalmology-vision": { label: "Ophthalmology & Vision Diagnostics", keywords: "eye ophthalmology oct fundus retina retinopathy cataract iol biometry laser yag perimetry glaucoma" },
@@ -204,6 +205,7 @@ export const CONSOLE_GROUPS = [
       "biomedical-ai-diagnostics",
       "patient-ehr-analytics",
       "ophthalmology-vision",
+      "poct-governance",
     ],
   },
   {
