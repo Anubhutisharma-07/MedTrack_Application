@@ -282,6 +282,7 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + id));
     }
 
+    @Transactional
     public EquipmentOrder placeOrder(PlaceOrderRequest request, Authentication authentication) {
         User hospitalUser = getAuthenticatedUser(authentication);
         if (hospitalUser.getOrganization() == null || hospitalUser.getOrganization().isBlank()) {
@@ -375,6 +376,7 @@ public class OrderService {
         return purchaseOrderPdf.generate(order);
     }
 
+    @Transactional
     public void deleteOrder(Long id) {
         EquipmentOrder order = getOrderById(id);
         orderRepository.delete(order);

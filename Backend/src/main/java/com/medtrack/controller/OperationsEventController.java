@@ -6,6 +6,7 @@ import com.medtrack.config.PaginationConfig;
 import com.medtrack.dto.EventReadRequest;
 import com.medtrack.dto.OperationsEventResponse;
 import com.medtrack.dto.UnreadCountResponse;
+import com.medtrack.exception.ResourceNotFoundException;
 import com.medtrack.model.EventReadReceipt;
 import com.medtrack.model.Hospital;
 import com.medtrack.model.OperationsEvent;
@@ -22,6 +23,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,6 +46,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/events")
 @RequiredArgsConstructor
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 public class OperationsEventController {
 
     private final OperationsEventRepository eventRepository;

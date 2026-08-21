@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/supplier/dashboard")
 @RequiredArgsConstructor
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
 @Tag(name = "Supplier Dashboard API", description = "Endpoints for supplier dashboard and operational insights")
 public class DashboardController {
 
