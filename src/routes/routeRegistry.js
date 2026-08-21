@@ -140,6 +140,7 @@ const AudiologyEntHub = lazy(() => import("../pages/ent/AudiologyEntHub"));
 const UrologyHub = lazy(() => import("../pages/urology/UrologyHub"));
 const PicuCriticalTelemetryHub = lazy(() => import("../pages/picu/PicuCriticalTelemetryHub"));
 
+const InfectionControlStewardshipHub = lazy(() => import("../pages/infectioncontrol/InfectionControlStewardshipHub"));
 const AuthoritySecurityPage = lazy(() => import("../pages/auth/AuthoritySecurityPage"));
 const MfaSecurityPage = lazy(() => import("../pages/auth/MfaSecurityPage"));
 const EnterpriseSsoPage = lazy(() => import("../pages/auth/EnterpriseSsoPage"));
